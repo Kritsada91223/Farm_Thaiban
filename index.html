@@ -1,0 +1,2570 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>ฟาร์มน้อย 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    font-family: 'Segoe UI', 'Tahoma', sans-serif;
+    background: #1a1410;
+    color: #2c2c2a;
+  }
+  #scene-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+  #scene-container canvas { display: block; }
+
+  .ui-layer { position: fixed; pointer-events: none; }
+  .ui-layer * { pointer-events: auto; }
+
+  /* ---------- HUD top ---------- */
+  #hud {
+    top: max(12px, env(safe-area-inset-top));
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;
+  }
+  .panel {
+    background: rgba(253,246,227,0.95);
+    border: 3px solid #6b4f2a;
+    border-radius: 10px;
+    padding: 8px 14px;
+  }
+  .hud-group { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .hud-item { display: flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .season-badge { padding: 3px 10px; border-radius: 14px; font-size: 12px; font-weight: 700; color: #fff; }
+  .map-badge { padding: 3px 10px; border-radius: 14px; font-size: 12px; font-weight: 700; color: #fff; background: #4a6b8a; }
+
+  /* ---------- bottom toolbar ---------- */
+  #bottom-bar {
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    display: flex; flex-direction: column; gap: 6px; align-items: stretch;
+  }
+  #toolbar, #shop-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    border: 2px solid #6b4f2a;
+    background: #fff8e7;
+    border-radius: 8px;
+    padding: 7px 11px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 5px;
+    color: #2c2c2a;
+  }
+  .btn:hover { background: #f0e2c0; }
+  .btn.active { background: #c9914a; color: #fff; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  #message-bar {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fdf6e3;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    min-height: 18px;
+  }
+
+  /* ---------- right side buttons ---------- */
+  #side-buttons {
+    top: 12px; right: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+    margin-top: 60px;
+  }
+  .icon-btn {
+    width: 44px; height: 44px;
+    border: 3px solid #6b4f2a;
+    background: rgba(253,246,227,0.95);
+    border-radius: 10px;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .icon-btn:hover { background: #f0e2c0; }
+
+  /* ---------- inventory modal ---------- */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 50;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: #fdf6e3;
+    border: 4px solid #6b4f2a;
+    border-radius: 14px;
+    padding: 18px 20px;
+    max-width: 420px;
+    width: 92%;
+    max-height: 80vh;
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .modal-box h2 {
+    font-size: 18px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .close-x {
+    cursor: pointer; font-size: 20px; background: none; border: none; color: #2c2c2a;
+    width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+  }
+  #inventory-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .inv-slot {
+    border: 2px solid #b89968;
+    border-radius: 8px;
+    background: #fff8e7;
+    aspect-ratio: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 22px;
+    position: relative;
+    padding: 4px;
+  }
+  .inv-slot .qty {
+    position: absolute; bottom: 2px; right: 4px;
+    font-size: 11px; font-weight: 700; color: #5c4a2a;
+  }
+  .inv-slot .label { font-size: 9px; color: #5c4a2a; margin-top: 2px; text-align: center; line-height: 1.1; }
+  .inv-empty { color: #b89968; font-size: 22px; }
+
+  /* ---------- sleep / fade overlay ---------- */
+  #fade-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 100;
+    transition: opacity 0.6s ease;
+  }
+  #fade-overlay.show { opacity: 1; }
+
+  /* ---------- joystick (mobile) ---------- */
+  #joystick-zone {
+    bottom: max(100px, calc(env(safe-area-inset-bottom) + 100px));
+    left: max(24px, env(safe-area-inset-left));
+    width: 110px; height: 110px;
+    display: none;
+  }
+  #joystick-zone.visible { display: block; }
+  #joy-base {
+    width: 100%; height: 100%; border-radius: 50%;
+    background: rgba(253,246,227,0.4);
+    border: 2px solid rgba(107,79,42,0.6);
+    position: relative;
+  }
+  #joy-thumb {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: rgba(201,145,74,0.85);
+    border: 2px solid #6b4f2a;
+    position: absolute; top: 32px; left: 32px;
+  }
+
+  /* ---------- interact button (mobile) ---------- */
+  #interact-btn {
+    bottom: max(100px, calc(env(safe-area-inset-bottom) + 100px));
+    right: max(24px, env(safe-area-inset-right));
+    width: 78px; height: 78px;
+    border-radius: 50%;
+    background: rgba(201,145,74,0.9);
+    border: 3px solid #6b4f2a;
+    color: #fff;
+    font-size: 28px;
+    display: none;
+    align-items: center; justify-content: center;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  #interact-btn.visible { display: flex; }
+  #interact-btn:active { background: rgba(201,145,74,1); transform: scale(0.94); }
+
+  #shop-modal .modal-box { max-width: 460px; }
+  .shop-item-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 4px; border-bottom: 1px solid #e0d0a8; font-size: 13px;
+  }
+  .shop-item-row:last-child { border-bottom: none; }
+
+  /* ---------- NPC dialogue box ---------- */
+  #dialogue-box {
+    bottom: 130px; left: 50%; transform: translateX(-50%);
+    width: min(92vw, 480px);
+    display: none;
+    z-index: 40;
+  }
+  #dialogue-box.show { display: block; }
+  #dialogue-box .panel { padding: 12px 16px; }
+  #dialogue-name { font-size: 13px; font-weight: 700; color: #8a4a2a; margin-bottom: 3px; }
+  #dialogue-text { font-size: 14px; line-height: 1.4; }
+  #dialogue-hint { font-size: 11px; color: #8a7050; margin-top: 6px; text-align: right; }
+
+  /* ---------- damage flash ---------- */
+  #damage-flash {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(226,75,74,0.35);
+    opacity: 0; pointer-events: none; z-index: 90;
+    transition: opacity 0.15s ease;
+  }
+  #damage-flash.show { opacity: 1; }
+
+  /* ---------- minigame overlay (fishing / mining) ---------- */
+  #minigame-overlay {
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    display: none;
+    z-index: 60;
+  }
+  #minigame-overlay.show { display: block; }
+  #minigame-overlay .panel { padding: 16px 20px; text-align: center; min-width: 260px; max-width: 92vw; }
+  #minigame-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+  #minigame-track {
+    position: relative;
+    width: min(240px, 70vw); height: 26px;
+    background: #e0d0a8;
+    border: 2px solid #6b4f2a;
+    border-radius: 6px;
+    margin: 0 auto 10px;
+    overflow: hidden;
+  }
+  #minigame-zone {
+    position: absolute; top: 0; height: 100%;
+    background: rgba(99,153,34,0.55);
+    border-left: 2px solid #3b6d11;
+    border-right: 2px solid #3b6d11;
+  }
+  #minigame-cursor {
+    position: absolute; top: 0; width: 4px; height: 100%;
+    background: #d85a30;
+  }
+  #minigame-hint { font-size: 12px; color: #5c4a2a; }
+
+  /* ---------- HP bars above wildlife/NPC ---------- */
+  .world-label {
+    position: fixed; transform: translate(-50%, -100%);
+    font-size: 11px; font-weight: 700; color: #fff;
+    background: rgba(0,0,0,0.55); padding: 1px 6px; border-radius: 6px;
+    pointer-events: none; white-space: nowrap;
+  }
+
+  @media (max-width: 700px) {
+    .panel { padding: 6px 9px; }
+    .hud-item { font-size: 11px; gap: 3px; }
+    .hud-group { gap: 8px; }
+    .btn { font-size: 12px; padding: 9px 12px; min-height: 40px; }
+    .icon-btn { width: 48px; height: 48px; font-size: 22px; }
+    #side-buttons { margin-top: 64px; gap: 10px; }
+    #bottom-bar {
+      bottom: max(225px, calc(env(safe-area-inset-bottom) + 225px));
+    }
+    #toolbar, #shop-row {
+      max-height: 96px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      touch-action: pan-y;
+    }
+    #message-bar { font-size: 12px; }
+    .modal-box { padding: 14px 16px; max-height: 75vh; }
+    .modal-box h2 { font-size: 16px; }
+    #inventory-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  @media (max-width: 700px) and (orientation: landscape) {
+    #bottom-bar {
+      bottom: max(12px, env(safe-area-inset-bottom));
+      left: max(120px, env(safe-area-inset-left));
+      right: max(100px, env(safe-area-inset-right));
+    }
+    #toolbar, #shop-row { max-height: 64px; }
+    #joystick-zone { bottom: max(16px, env(safe-area-inset-bottom)); }
+    #interact-btn { bottom: max(16px, env(safe-area-inset-bottom)); width: 64px; height: 64px; font-size: 22px; }
+    #side-buttons { margin-top: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="scene-container"></div>
+
+<div id="fade-overlay"></div>
+
+<div id="damage-flash"></div>
+
+<div class="ui-layer" id="dialogue-box">
+  <div class="panel">
+    <div id="dialogue-name">ชื่อ NPC</div>
+    <div id="dialogue-text">บทพูด</div>
+    <div id="dialogue-hint">กด E หรือคลิกเพื่อปิด</div>
+  </div>
+</div>
+
+<div class="ui-layer" id="minigame-overlay">
+  <div class="panel">
+    <div id="minigame-title">กำลังตกปลา...</div>
+    <div id="minigame-track">
+      <div id="minigame-zone"></div>
+      <div id="minigame-cursor"></div>
+    </div>
+    <div id="minigame-hint">กด เว้นวรรค หรือแตะ จังหวะที่แถบอยู่ในโซนสีเขียว</div>
+  </div>
+</div>
+
+<div id="world-labels"></div>
+
+<div class="ui-layer" id="hud">
+  <div class="panel hud-group">
+    <div class="hud-item">🪙 <span id="gold-display">50</span></div>
+    <div class="hud-item">⚡ <span id="energy-display">100</span>/100</div>
+    <div class="hud-item">❤️ <span id="health-display">100</span>/100</div>
+    <div class="hud-item">📅 วันที่ <span id="day-display">1</span></div>
+  </div>
+  <div class="panel hud-group">
+    <span id="season-badge" class="season-badge">ฤดูใบไม้ผลิ</span>
+    <span id="map-badge" class="map-badge">ฟาร์ม</span>
+  </div>
+</div>
+
+<div class="ui-layer" id="side-buttons">
+  <button class="icon-btn" id="inventory-btn" title="กระเป๋า">🎒</button>
+  <button class="icon-btn" id="camera-left-btn" title="หมุนกล้องซ้าย">↺</button>
+  <button class="icon-btn" id="camera-right-btn" title="หมุนกล้องขวา">↻</button>
+</div>
+
+<div class="ui-layer" id="bottom-bar">
+  <div id="message-bar">เดินด้วย WASD หรือลูกศร • ใช้ปุ่มด้านล่างเพื่อเลือกเครื่องมือ</div>
+  <div id="shop-row"></div>
+  <div id="toolbar"></div>
+</div>
+
+<div class="ui-layer" id="joystick-zone">
+  <div id="joy-base"><div id="joy-thumb"></div></div>
+</div>
+
+<button class="ui-layer" id="interact-btn" aria-label="โต้ตอบ">✋</button>
+
+<!-- Inventory Modal -->
+<div class="modal-overlay" id="inventory-modal">
+  <div class="modal-box">
+    <h2>กระเป๋าของฉัน <button class="close-x" data-close="inventory-modal">✕</button></h2>
+    <div id="inventory-grid"></div>
+  </div>
+</div>
+
+<!-- Town Shop Modal -->
+<div class="modal-overlay" id="shop-modal">
+  <div class="modal-box">
+    <h2>ร้านค้าในเมือง <button class="close-x" data-close="shop-modal">✕</button></h2>
+    <div id="shop-sell-list"></div>
+  </div>
+</div>
+
+<!-- Sleep confirm modal -->
+<div class="modal-overlay" id="sleep-modal">
+  <div class="modal-box" style="text-align:center;">
+    <h2 style="justify-content:center;">เข้านอนเพื่อพักผ่อนไหม?</h2>
+    <p style="font-size:13px; margin-bottom:12px; color:#5c4a2a;">พลังงานจะเต็ม และเช้าวันใหม่จะมาถึง</p>
+    <div style="display:flex; gap:8px; justify-content:center;">
+      <button class="btn" id="sleep-confirm-yes">นอนเลย</button>
+      <button class="btn" id="sleep-confirm-no">ยังก่อน</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =========================================================================
+// ฟาร์มน้อย 3D - Game Logic
+// =========================================================================
+'use strict';
+
+// ---------- Global state ----------
+const Game = {
+  gold: 50,
+  energy: 100,
+  health: 100,
+  day: 1,
+  season: 0, // 0 spring 1 summer 2 fall 3 winter
+  currentMap: 'farm', // farm | town | forest | house | cave
+  selectedTool: 'hoe',
+  selectedSeed: 'carrot',
+  inventory: {}, // itemId -> qty
+  keys: {},
+  joystick: { active: false, dx: 0, dy: 0 },
+  player: {
+    x: 0, z: 0, rotY: 0,
+    speed: 4.2,
+    mesh: null,
+    invulnerableUntil: 0
+  },
+  camera: { angle: 0, distance: 11, height: 7 },
+  clock: null,
+  scenes: {}, // map name -> { scene, interactables, exits, tiles }
+  renderer: null,
+  camera3: null,
+  raycaster: null,
+  sleepingPromptShown: false,
+  minigame: null, // active minigame state (fishing / mining), null when none
+  dialogueOpen: false,
+  activeDialogueNPC: null
+};
+
+const SEASONS = [
+  { name: 'ฤดูใบไม้ผลิ', color: '#7bb661', ground: 0x6b9e3f, sky: 0xbfe3ff },
+  { name: 'ฤดูร้อน', color: '#e0a73a', ground: 0x7fae3f, sky: 0x8fd3ff },
+  { name: 'ฤดูใบไม้ร่วง', color: '#c5703a', ground: 0x8a7a3f, sky: 0xd9c9a3 },
+  { name: 'ฤดูหนาว', color: '#7aa3c9', ground: 0x9fa8a0, sky: 0xcfd9e0 }
+];
+
+const CROPS = {
+  carrot:  { name: 'แครอท',      cost: 5,  growTime: 3, sellPrice: 12, seasons: [0,1], color: 0xd85a30 },
+  wheat:   { name: 'ข้าวสาลี',   cost: 3,  growTime: 2, sellPrice: 7,  seasons: [0,1,2], color: 0xfac775 },
+  tomato:  { name: 'มะเขือเทศ',  cost: 8,  growTime: 4, sellPrice: 20, seasons: [1], color: 0xe24b4a },
+  pumpkin: { name: 'ฟักทอง',     cost: 15, growTime: 6, sellPrice: 40, seasons: [2], color: 0xef9f27 },
+  cabbage: { name: 'กะหล่ำปลี',  cost: 6,  growTime: 4, sellPrice: 16, seasons: [3,0], color: 0x97c459 }
+};
+
+const FOREST_ITEMS = {
+  mushroom: { name: 'เห็ดป่า', sellPrice: 6, color: 0xc98a5a },
+  berry:    { name: 'เบอร์รี่ป่า', sellPrice: 9, color: 0x993556 },
+  log:      { name: 'ไม้ฟืน', sellPrice: 4, color: 0x6b4a2a },
+  truffle:  { name: 'เห็ดทรัฟเฟิล', sellPrice: 25, color: 0x4a3526 }
+};
+
+const WILDLIFE_TYPES = {
+  rabbit: { name: 'กระต่ายป่า', hp: 15, damage: 3, speed: 2.6, sellMeat: 'rabbit_meat', detectRange: 4.5, attackRange: 0.7, fleeChance: 0.35, color: 0xcdb89a, scale: 0.45 },
+  boar:   { name: 'หมูป่า',     hp: 35, damage: 9, speed: 2.0, sellMeat: 'boar_meat', detectRange: 5.5, attackRange: 0.9, fleeChance: 0,    color: 0x6b4a3a, scale: 0.7 },
+  wolf:   { name: 'หมาป่า',     hp: 50, damage: 14, speed: 3.4, sellMeat: 'wolf_pelt', detectRange: 7,   attackRange: 0.9, fleeChance: 0,    color: 0x5a5650, scale: 0.62 }
+};
+const WILDLIFE_DROPS = {
+  rabbit_meat: { name: 'เนื้อกระต่าย', sellPrice: 10 },
+  boar_meat:   { name: 'เนื้อหมูป่า', sellPrice: 18 },
+  wolf_pelt:   { name: 'หนังหมาป่า', sellPrice: 28 }
+};
+
+const ORE_TYPES = {
+  copper: { name: 'แร่ทองแดง', sellPrice: 10, color: 0xd8956a, rarity: 0.45 },
+  iron:   { name: 'แร่เหล็ก',  sellPrice: 18, color: 0xaeb4bd, rarity: 0.30 },
+  gold:   { name: 'แร่ทอง',    sellPrice: 35, color: 0xe6c34a, rarity: 0.18 },
+  gem:    { name: 'พลอยดิบ',   sellPrice: 60, color: 0x7f77dd, rarity: 0.07 }
+};
+
+const FISH_TYPES = {
+  smallfish: { name: 'ปลาเล็ก', sellPrice: 8,  difficulty: 'ง่าย', barSize: 0.42, fishSpeed: 1.6 },
+  carp:      { name: 'ปลาคาร์ป', sellPrice: 16, difficulty: 'กลาง', barSize: 0.30, fishSpeed: 2.2 },
+  goldfish:  { name: 'ปลาทอง',   sellPrice: 32, difficulty: 'ยาก',  barSize: 0.20, fishSpeed: 2.9 }
+};
+
+function addToInventory(itemId, qty) {
+  Game.inventory[itemId] = (Game.inventory[itemId] || 0) + qty;
+}
+
+function showMessage(text) {
+  document.getElementById('message-bar').textContent = text;
+}
+
+function updateHUD() {
+  document.getElementById('gold-display').textContent = Game.gold;
+  document.getElementById('energy-display').textContent = Math.max(0, Math.round(Game.energy));
+  document.getElementById('health-display').textContent = Math.max(0, Math.round(Game.health));
+  document.getElementById('day-display').textContent = Game.day;
+  const s = SEASONS[Game.season];
+  const seasonBadge = document.getElementById('season-badge');
+  seasonBadge.textContent = s.name;
+  seasonBadge.style.background = s.color;
+  const mapNames = { farm: 'ฟาร์ม', town: 'เมือง', forest: 'ป่า', house: 'บ้าน', cave: 'ถ้ำ' };
+  document.getElementById('map-badge').textContent = mapNames[Game.currentMap] || Game.currentMap;
+}
+
+// =========================================================================
+// THREE.js renderer / camera setup (shared across maps)
+// =========================================================================
+function initRenderer() {
+  const container = document.getElementById('scene-container');
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.appendChild(renderer.domElement);
+  Game.renderer = renderer;
+
+  const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+  Game.camera3 = camera;
+
+  window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+  });
+}
+
+function createPlayerMesh() {
+  const group = new THREE.Group();
+
+  const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3a5fa0 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.3), bodyMat);
+  body.position.y = 0.55;
+  body.castShadow = true;
+  group.add(body);
+
+  const headMat = new THREE.MeshLambertMaterial({ color: 0xe8b88a });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), headMat);
+  head.position.y = 1.0;
+  head.castShadow = true;
+  group.add(head);
+
+  const hairMat = new THREE.MeshLambertMaterial({ color: 0x5c3a21 });
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.23, 12, 12, 0, Math.PI * 2, 0, Math.PI / 1.8), hairMat);
+  hair.position.y = 1.07;
+  group.add(hair);
+
+  const legMat = new THREE.MeshLambertMaterial({ color: 0x2c2c2a });
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.35, 0.16), legMat);
+  legL.position.set(-0.13, 0.18, 0);
+  legL.castShadow = true;
+  group.add(legL);
+  const legR = legL.clone();
+  legR.position.x = 0.13;
+  group.add(legR);
+
+  // simple nose/face indicator on +Z so we can tell facing direction
+  const noseMat = new THREE.MeshLambertMaterial({ color: 0x2c2c2a });
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), noseMat);
+  nose.position.set(0, 1.0, 0.21);
+  group.add(nose);
+
+  group.userData.legL = legL;
+  group.userData.legR = legR;
+  return group;
+}
+
+// =========================================================================
+// PROCEDURAL TEXTURES (canvas-based, no external image assets needed)
+// =========================================================================
+const textureCache = {};
+
+function makeNoiseTexture(key, baseColor, speckColors, size, repeat) {
+  if (textureCache[key]) return textureCache[key];
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 900; i++) {
+    const x = Math.random() * 128;
+    const y = Math.random() * 128;
+    const c = speckColors[Math.floor(Math.random() * speckColors.length)];
+    ctx.fillStyle = c;
+    const s = 1 + Math.random() * 2.2;
+    ctx.globalAlpha = 0.35 + Math.random() * 0.4;
+    ctx.fillRect(x, y, s, s);
+  }
+  ctx.globalAlpha = 1;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeat, repeat);
+  tex.magFilter = THREE.NearestFilter;
+  textureCache[key] = tex;
+  return tex;
+}
+
+function getGrassTexture(seasonIdx) {
+  const palettes = [
+    { base: '#6b9e3f', specks: ['#7bb661', '#5a8a33', '#85c46e'] }, // spring
+    { base: '#7fae3f', specks: ['#97c459', '#6d9930', '#a8d472'] }, // summer
+    { base: '#8a7a3f', specks: ['#c5703a', '#7a6a35', '#a88a4a'] }, // fall
+    { base: '#9fa8a0', specks: ['#ffffff', '#c8d0cb', '#8a9590'] }  // winter
+  ];
+  const p = palettes[seasonIdx];
+  return makeNoiseTexture('grass_' + seasonIdx, p.base, p.specks, 128, 10);
+}
+
+function getSoilTexture(wet) {
+  const key = wet ? 'soil_wet' : 'soil_dry';
+  const base = wet ? '#6b4a2a' : '#9c8a63';
+  const specks = wet ? ['#5a3d22', '#7a5a35', '#4a3018'] : ['#8a7850', '#b09a70', '#7a6848'];
+  return makeNoiseTexture(key, base, specks, 128, 1);
+}
+
+function getStoneTexture() {
+  return makeNoiseTexture('stone', '#b0a888', ['#9c9478', '#c4bc9c', '#888068'], 128, 8);
+}
+
+function getForestFloorTexture() {
+  return makeNoiseTexture('forestfloor', '#3b5a2a', ['#2f4a20', '#4a6a35', '#284018'], 128, 12);
+}
+
+function getCaveFloorTexture() {
+  return makeNoiseTexture('cavefloor', '#3a3530', ['#2a2622', '#4a443c', '#1f1c18'], 128, 9);
+}
+
+function makeWaterTexture() {
+  if (textureCache.water) return textureCache.water;
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#2a6f9e';
+  ctx.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 30; i++) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1 + Math.random();
+    ctx.beginPath();
+    const y = Math.random() * 128;
+    ctx.moveTo(0, y);
+    ctx.bezierCurveTo(32, y + 10, 96, y - 10, 128, y);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 4);
+  textureCache.water = tex;
+  return tex;
+}
+
+function makeGroundTexture(scene, size, colorOrTexture) {
+  const geo = new THREE.PlaneGeometry(size, size);
+  let mat;
+  if (colorOrTexture && colorOrTexture.isTexture) {
+    mat = new THREE.MeshLambertMaterial({ map: colorOrTexture });
+  } else {
+    mat = new THREE.MeshLambertMaterial({ color: colorOrTexture });
+  }
+  const ground = new THREE.Mesh(geo, mat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  return ground;
+}
+
+function addStandardLighting(scene, skyColor) {
+  scene.background = new THREE.Color(skyColor);
+  scene.fog = new THREE.Fog(skyColor, 16, 40);
+
+  const hemi = new THREE.HemisphereLight(skyColor, 0x4a3a28, 0.55);
+  scene.add(hemi);
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.32);
+  scene.add(ambient);
+
+  const sun = new THREE.DirectionalLight(0xfff4e0, 1.05);
+  sun.position.set(10, 16, 7);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -22;
+  sun.shadow.camera.right = 22;
+  sun.shadow.camera.top = 22;
+  sun.shadow.camera.bottom = -22;
+  sun.shadow.camera.far = 55;
+  sun.shadow.bias = -0.0015;
+  scene.add(sun);
+  scene.userData.sun = sun;
+  scene.userData.hemi = hemi;
+}
+
+function makeSimpleTree(x, z) {
+  const group = new THREE.Group();
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4530 });
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 1.3, 8), trunkMat);
+  trunk.position.y = 0.65;
+  trunk.castShadow = true;
+  trunk.receiveShadow = true;
+  group.add(trunk);
+
+  const leafColors = [0x4d7a2f, 0x466e2a, 0x568a36];
+  const leafBaseY = 1.35;
+  for (let i = 0; i < 3; i++) {
+    const leafMat = new THREE.MeshLambertMaterial({ color: leafColors[i % leafColors.length] });
+    const scale = 1 - i * 0.18;
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.62 * scale, 9, 8), leafMat);
+    const angle = (i / 3) * Math.PI * 2;
+    leaf.position.set(Math.cos(angle) * 0.22, leafBaseY + i * 0.32, Math.sin(angle) * 0.22);
+    leaf.castShadow = true;
+    group.add(leaf);
+  }
+  const topLeafMat = new THREE.MeshLambertMaterial({ color: 0x5a8a38 });
+  const topLeaf = new THREE.Mesh(new THREE.SphereGeometry(0.5, 9, 8), topLeafMat);
+  topLeaf.position.y = leafBaseY + 0.75;
+  topLeaf.castShadow = true;
+  group.add(topLeaf);
+
+  group.position.set(x, 0, z);
+  group.userData.solid = true;
+  group.userData.radius = 0.5;
+  return group;
+}
+
+function makeRock(x, z) {
+  const mat = new THREE.MeshLambertMaterial({ color: 0x888780 });
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.35, 0), mat);
+  rock.position.set(x, 0.25, z);
+  rock.castShadow = true;
+  rock.userData.solid = true;
+  rock.userData.radius = 0.4;
+  return rock;
+}
+
+function makeBuilding(x, z, w, d, h, color, roofColor) {
+  const group = new THREE.Group();
+  const wallMat = new THREE.MeshLambertMaterial({ color });
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
+  wall.position.y = h / 2;
+  wall.castShadow = true;
+  wall.receiveShadow = true;
+  group.add(wall);
+
+  const roofMat = new THREE.MeshLambertMaterial({ color: roofColor });
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.75, h * 0.6, 4), roofMat);
+  roof.position.y = h + (h * 0.3);
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  group.add(roof);
+
+  group.position.set(x, 0, z);
+  group.userData.solid = true;
+  group.userData.radius = Math.max(w, d) / 2;
+  return group;
+}
+
+function makeMarker(x, z, label, color) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.3 });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.8, 24), mat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.02;
+  group.add(ring);
+  group.position.set(x, 0, z);
+  return group;
+}
+
+function scatterGrassBlades(scene, count, halfExtent, excludeFn, colorHex) {
+  const bladeGeo = new THREE.ConeGeometry(0.04, 0.22, 4);
+  const bladeMat = new THREE.MeshLambertMaterial({ color: colorHex || 0x5a9e3a });
+  const mesh = new THREE.InstancedMesh(bladeGeo, bladeMat, count);
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  const dummy = new THREE.Object3D();
+  let placed = 0, attempts = 0;
+  while (placed < count && attempts < count * 4) {
+    attempts++;
+    const x = (Math.random() * 2 - 1) * halfExtent;
+    const z = (Math.random() * 2 - 1) * halfExtent;
+    if (excludeFn && excludeFn(x, z)) continue;
+    dummy.position.set(x, 0.1, z);
+    dummy.rotation.y = Math.random() * Math.PI;
+    const scale = 0.7 + Math.random() * 0.6;
+    dummy.scale.set(scale, scale, scale);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(placed, dummy.matrix);
+    placed++;
+  }
+  mesh.count = placed;
+  scene.add(mesh);
+  return mesh;
+}
+
+// =========================================================================
+// FARM MAP
+// =========================================================================
+const FARM_SIZE = 24; // half-extent... actually full size of ground plane
+const FARM_HALF = FARM_SIZE / 2;
+const PLOT_GRID = 6; // 6x6 tillable plots
+const PLOT_SPACING = 1.4;
+const PLOT_ORIGIN_X = -((PLOT_GRID - 1) * PLOT_SPACING) / 2;
+const PLOT_ORIGIN_Z = -2;
+
+function buildFarmScene() {
+  const scene = new THREE.Scene();
+  const season = SEASONS[Game.season];
+  addStandardLighting(scene, season.sky);
+  makeGroundTexture(scene, FARM_SIZE, getGrassTexture(Game.season));
+
+  const tiles = [];
+  const tileGroup = new THREE.Group();
+  for (let row = 0; row < PLOT_GRID; row++) {
+    for (let col = 0; col < PLOT_GRID; col++) {
+      const x = PLOT_ORIGIN_X + col * PLOT_SPACING;
+      const z = PLOT_ORIGIN_Z + row * PLOT_SPACING;
+
+      const soilMat = new THREE.MeshLambertMaterial({ map: getSoilTexture(false) });
+      const soil = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.1, 1.15), soilMat);
+      soil.position.set(x, 0.04, z);
+      soil.receiveShadow = true;
+      soil.castShadow = true;
+      soil.visible = false; // shown once tilled
+      tileGroup.add(soil);
+
+      const tile = {
+        x, z, row, col,
+        tilled: false, seed: null, growth: 0, watered: false,
+        soilMesh: soil, cropMesh: null
+      };
+      tiles.push(tile);
+    }
+  }
+  scene.add(tileGroup);
+
+  // decorations: trees around the border, rocks scattered
+  const decor = new THREE.Group();
+  const treeSpots = [
+    [-10, -10], [10, -10], [-10, 8], [10, 8], [-9, 0], [9, 1], [-6, -10], [6, -10]
+  ];
+  treeSpots.forEach(([x, z]) => decor.add(makeSimpleTree(x, z)));
+  const rockSpots = [[-7, 5], [7, -4], [-4, 9], [5, 6]];
+  rockSpots.forEach(([x, z]) => decor.add(makeRock(x, z)));
+  scene.add(decor);
+
+  // decorative grass blades, avoiding the tilled-plot area
+  scatterGrassBlades(scene, 260, FARM_HALF - 1, (x, z) => {
+    return x > PLOT_ORIGIN_X - 1.2 && x < PLOT_ORIGIN_X + PLOT_GRID * PLOT_SPACING
+      && z > PLOT_ORIGIN_Z - 1.2 && z < PLOT_ORIGIN_Z + PLOT_GRID * PLOT_SPACING;
+  }, 0x6bae3f);
+
+  // house (sleep point)
+  const house = makeBuilding(-8, -4, 3.2, 3.2, 2.2, 0xc9914a, 0x8a4a2a);
+  house.userData.type = 'house-entrance';
+  scene.add(house);
+  const houseDoorMarker = makeMarker(-8, -2.2, 'เข้าบ้าน', 0x6b4f2a);
+  scene.add(houseDoorMarker);
+
+  // exits at map edges
+  const exits = [];
+  // east edge -> town
+  const exitTown = { x: FARM_HALF - 0.5, z: 0, targetMap: 'town', radius: 1.6 };
+  exits.push(exitTown);
+  scene.add(makeMarker(exitTown.x, exitTown.z, 'ไปเมือง', 0x378add));
+
+  // north edge -> forest
+  const exitForest = { x: 0, z: -FARM_HALF + 0.5, targetMap: 'forest', radius: 1.6 };
+  exits.push(exitForest);
+  scene.add(makeMarker(exitForest.x, exitForest.z, 'ไปป่า', 0x3b6d11));
+
+  // cave entrance on the west edge -> mine
+  const caveMouthMat = new THREE.MeshLambertMaterial({ color: 0x3a3530 });
+  const caveMouth = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 2.4, 12, 1, true, Math.PI, Math.PI), caveMouthMat);
+  caveMouth.rotation.z = Math.PI / 2;
+  caveMouth.rotation.y = Math.PI / 2;
+  caveMouth.position.set(-FARM_HALF + 1.2, 1.2, 5);
+  scene.add(caveMouth);
+  const caveFrameMat = new THREE.MeshLambertMaterial({ color: 0x6b6258 });
+  const caveFrame = new THREE.Mesh(new THREE.TorusGeometry(1.35, 0.22, 8, 16, Math.PI), caveFrameMat);
+  caveFrame.rotation.y = Math.PI / 2;
+  caveFrame.position.set(-FARM_HALF + 1.2, 1.2, 5);
+  scene.add(caveFrame);
+  const exitCave = { x: -FARM_HALF + 1.2, z: 5, targetMap: 'cave', radius: 1.5 };
+  exits.push(exitCave);
+  scene.add(makeMarker(exitCave.x, exitCave.z, 'เข้าถ้ำ', 0x444441));
+
+  // pets pen
+  const pets = [];
+  const petPenMarker = makeMarker(6, 7, 'คอกสัตว์', 0xc9914a);
+  scene.add(petPenMarker);
+
+  return {
+    scene,
+    tiles,
+    exits,
+    bounds: { minX: -FARM_HALF + 0.6, maxX: FARM_HALF - 0.6, minZ: -FARM_HALF + 0.6, maxZ: FARM_HALF - 0.6 },
+    solids: [...decor.children, house],
+    pets,
+    petPenCenter: { x: 6, z: 7 },
+    spawn: { x: 0, z: 4 },
+    fromTownSpawn: { x: FARM_HALF - 3.5, z: 0 },
+    fromForestSpawn: { x: 0, z: -FARM_HALF + 3.5 },
+    fromCaveSpawn: { x: -FARM_HALF + 3.2, z: 5 },
+    houseDoor: { x: -8, z: -2.2, radius: 1.4 }
+  };
+}
+
+function refreshCropMesh(tile, scene) {
+  if (tile.cropMesh) {
+    scene.remove(tile.cropMesh);
+    tile.cropMesh = null;
+  }
+  if (!tile.seed) return;
+  const crop = CROPS[tile.seed];
+  const progress = tile.growth / crop.growTime;
+  const group = new THREE.Group();
+
+  if (progress >= 1) {
+    const mat = new THREE.MeshLambertMaterial({ color: crop.color });
+    const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), mat);
+    fruit.position.y = 0.35;
+    fruit.castShadow = true;
+    group.add(fruit);
+    const stemMat = new THREE.MeshLambertMaterial({ color: 0x4d7a2f });
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.3, 6), stemMat);
+    stem.position.y = 0.18;
+    group.add(stem);
+  } else if (progress >= 0.5) {
+    const stemMat = new THREE.MeshLambertMaterial({ color: 0x4d7a2f });
+    const stem = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.32, 6), stemMat);
+    stem.position.y = 0.16;
+    group.add(stem);
+  } else {
+    const sproutMat = new THREE.MeshLambertMaterial({ color: 0x7bb661 });
+    const sprout = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.14, 6), sproutMat);
+    sprout.position.y = 0.07;
+    group.add(sprout);
+  }
+
+  group.position.set(tile.x, 0.08, tile.z);
+  scene.add(group);
+  tile.cropMesh = group;
+}
+
+function findNearestTile(tiles, px, pz, maxDist) {
+  let best = null;
+  let bestDist = maxDist;
+  tiles.forEach(t => {
+    const d = Math.hypot(t.x - px, t.z - pz);
+    if (d < bestDist) { bestDist = d; best = t; }
+  });
+  return best;
+}
+
+function useToolOnFarmTile(tile, mapData) {
+  if (Game.energy < 3) { showMessage('พลังงานหมดแล้ว กลับไปนอนพักก่อนนะ'); return; }
+
+  if (Game.selectedTool === 'hoe') {
+    if (tile.tilled) { showMessage('ไถดินตรงนี้ไปแล้ว'); return; }
+    tile.tilled = true;
+    tile.soilMesh.visible = true;
+    Game.energy -= 3;
+    showMessage('ไถดินเรียบร้อย พร้อมปลูกผัก');
+  } else if (Game.selectedTool === 'plant') {
+    if (!tile.tilled) { showMessage('ต้องไถดินก่อนถึงจะปลูกได้'); return; }
+    if (tile.seed) { showMessage('มีต้นไม้ปลูกอยู่แล้ว'); return; }
+    const crop = CROPS[Game.selectedSeed];
+    if (!crop.seasons.includes(Game.season)) { showMessage(crop.name + 'ปลูกไม่ได้ในฤดูนี้'); return; }
+    if (Game.gold < crop.cost) { showMessage('เงินไม่พอซื้อเมล็ด' + crop.name); return; }
+    Game.gold -= crop.cost;
+    tile.seed = Game.selectedSeed;
+    tile.growth = 0;
+    tile.watered = false;
+    refreshCropMesh(tile, mapData.scene);
+    Game.energy -= 2;
+    updateHUD();
+    showMessage('ปลูก' + crop.name + 'แล้ว');
+  } else if (Game.selectedTool === 'water') {
+    if (!tile.tilled || !tile.seed) { showMessage('ไม่มีอะไรให้รดน้ำตรงนี้'); return; }
+    if (tile.watered) { showMessage('รดน้ำไปแล้ววันนี้'); return; }
+    tile.watered = true;
+    tile.soilMesh.material.map = getSoilTexture(true);
+    tile.soilMesh.material.needsUpdate = true;
+    Game.energy -= 2;
+    updateHUD();
+    showMessage('รดน้ำแล้ว พรุ่งนี้จะเติบโตขึ้น');
+  } else if (Game.selectedTool === 'harvest') {
+    if (!tile.seed) { showMessage('ไม่มีผักให้เก็บเกี่ยวตรงนี้'); return; }
+    const crop = CROPS[tile.seed];
+    if (tile.growth < crop.growTime) { showMessage(crop.name + 'ยังโตไม่เต็มที่'); return; }
+    addToInventory(tile.seed, 1);
+    tile.seed = null;
+    tile.growth = 0;
+    tile.watered = false;
+    tile.soilMesh.material.map = getSoilTexture(false);
+    tile.soilMesh.material.needsUpdate = true;
+    refreshCropMesh(tile, mapData.scene);
+    showMessage('เก็บเกี่ยว' + crop.name + 'ใส่กระเป๋าแล้ว');
+  } else if (Game.selectedTool === 'feed') {
+    showMessage('ใช้เครื่องมือให้อาหารตรงคอกสัตว์เท่านั้น');
+  }
+}
+
+// =========================================================================
+// TOWN MAP
+// =========================================================================
+const TOWN_SIZE = 22;
+const TOWN_HALF = TOWN_SIZE / 2;
+
+// =========================================================================
+// NPCs (town characters with dialogue)
+// =========================================================================
+const NPC_DEFS = [
+  {
+    id: 'merchant', name: 'พ่อค้าซอม', role: 'พ่อค้า', shirtColor: 0x993556, hairColor: 0x2c2c2a,
+    lines: [
+      'สนใจซื้อขายอะไรก็เข้าไปในร้านได้เลยนะ',
+      'ของป่าหายากๆอย่างเห็ดทรัฟเฟิลนี่ราคาดีเชียว',
+      'ฤดูนี้ผักอะไรขายดีรู้ไหม ลองเดาดูสิ',
+      'ถ้ามีของเยอะ ค่อยๆทยอยขายก็ได้ ไม่ต้องรีบ'
+    ]
+  },
+  {
+    id: 'villager1', name: 'ป้าศรี', role: 'ชาวบ้าน', shirtColor: 0x639922, hairColor: 0x5c4a2a,
+    lines: [
+      'วันนี้อากาศดีจัง เหมาะกับการทำฟาร์มเลย',
+      'ได้ยินว่าในป่ามีเห็ดทรัฟเฟิลหายากอยู่นะ',
+      'แม่น้ำท้ายเมืองมีปลาเยอะ ลองไปตกดูสิ',
+      'ระวังสัตว์ป่าด้วยนะ บางตัวก็ดุอยู่'
+    ]
+  },
+  {
+    id: 'villager2', name: 'ลุงมั่น', role: 'ชาวบ้าน', shirtColor: 0x378add, hairColor: 0x888780,
+    lines: [
+      'เคยขุดแร่ในถ้ำไหม ได้ของดีเยอะเลยนะ',
+      'ฟาร์มของเธอดูท่าจะรุ่งนะเนี่ย',
+      'ฤดูหนาวนี้ปลูกผักได้น้อยลง ระวังเสบียงด้วย',
+      'ถ้าเหนื่อยก็กลับไปนอนพักที่บ้านก่อนได้นะ'
+    ]
+  }
+];
+
+function makeNPCMesh(def) {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: def.shirtColor });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.3), bodyMat);
+  body.position.y = 0.55;
+  body.castShadow = true;
+  group.add(body);
+
+  const headMat = new THREE.MeshLambertMaterial({ color: 0xe8b88a });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), headMat);
+  head.position.y = 1.0;
+  head.castShadow = true;
+  group.add(head);
+
+  const hairMat = new THREE.MeshLambertMaterial({ color: def.hairColor });
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.23, 12, 12, 0, Math.PI * 2, 0, Math.PI / 1.8), hairMat);
+  hair.position.y = 1.07;
+  group.add(hair);
+
+  const legMat = new THREE.MeshLambertMaterial({ color: 0x444441 });
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.35, 0.16), legMat);
+  legL.position.set(-0.13, 0.18, 0);
+  group.add(legL);
+  const legR = legL.clone();
+  legR.position.x = 0.13;
+  group.add(legR);
+
+  return group;
+}
+
+function addNPCsToTown(mapData) {
+  const positions = [
+    { x: 4.2, z: -2.0 },  // merchant stands well clear of the shop door trigger zone
+    { x: -5, z: 0.5 },
+    { x: 5, z: 1.5 }
+  ];
+  mapData.npcs = [];
+  NPC_DEFS.forEach((def, i) => {
+    const mesh = makeNPCMesh(def);
+    const pos = positions[i] || { x: i * 2, z: 0 };
+    mesh.position.set(pos.x, 0, pos.z);
+    mesh.rotation.y = Math.PI;
+    mapData.scene.add(mesh);
+    mapData.npcs.push({ def, x: pos.x, z: pos.z, mesh, lineIndex: 0 });
+  });
+}
+
+function talkToNPC(npc) {
+  const line = npc.def.lines[npc.lineIndex % npc.def.lines.length];
+  npc.lineIndex += 1;
+  document.getElementById('dialogue-name').textContent = npc.def.name + ' (' + npc.def.role + ')';
+  document.getElementById('dialogue-text').textContent = line;
+  document.getElementById('dialogue-box').classList.add('show');
+  Game.dialogueOpen = true;
+  Game.activeDialogueNPC = npc;
+}
+
+function closeDialogue() {
+  document.getElementById('dialogue-box').classList.remove('show');
+  Game.dialogueOpen = false;
+  Game.activeDialogueNPC = null;
+}
+
+function updateDialogueProximity(mapData) {
+  const npc = Game.activeDialogueNPC;
+  if (!npc) { closeDialogue(); return; }
+  const dist = Math.hypot(npc.x - Game.player.x, npc.z - Game.player.z);
+  if (dist > 2.6) { closeDialogue(); }
+}
+
+// =========================================================================
+// FISHING MINIGAME (rhythm: press action when cursor is inside green zone)
+// =========================================================================
+function startFishingMinigame() {
+  if (Game.energy < 5) { showMessage('พลังงานไม่พอจะตกปลา'); return; }
+  const roll = Math.random();
+  let fishKey = 'smallfish';
+  if (roll > 0.55 && roll <= 0.85) fishKey = 'carp';
+  else if (roll > 0.85) fishKey = 'goldfish';
+  const fish = FISH_TYPES[fishKey];
+
+  const zoneStart = Math.random() * (1 - fish.barSize);
+  Game.minigame = {
+    type: 'fishing',
+    fishKey,
+    cursorPos: 0,
+    direction: 1,
+    speed: fish.fishSpeed,
+    zoneStart,
+    zoneSize: fish.barSize,
+    attemptsLeft: 3
+  };
+
+  document.getElementById('minigame-title').textContent = 'ตกปลา... (' + fish.difficulty + ')';
+  document.getElementById('minigame-hint').textContent = 'กด เว้นวรรค หรือแตะที่กล่องนี้ตอนแถบสีแดงอยู่ในโซนสีเขียว';
+  document.getElementById('minigame-zone').style.left = (zoneStart * 100) + '%';
+  document.getElementById('minigame-zone').style.width = (fish.barSize * 100) + '%';
+  document.getElementById('minigame-overlay').classList.add('show');
+}
+
+function updateMinigame(delta) {
+  if (!Game.minigame) return;
+  if (Game.minigame.type === 'fishing' || Game.minigame.type === 'mining') {
+    updateFishingMinigame(delta); // shared cursor physics for both rhythm bars
+  }
+}
+
+function updateFishingMinigame(delta) {
+  const mg = Game.minigame;
+  mg.cursorPos += mg.direction * mg.speed * delta;
+  if (mg.cursorPos >= 1) { mg.cursorPos = 1; mg.direction = -1; }
+  if (mg.cursorPos <= 0) { mg.cursorPos = 0; mg.direction = 1; }
+  document.getElementById('minigame-cursor').style.left = (mg.cursorPos * 100) + '%';
+}
+
+// =========================================================================
+// MINING MINIGAME (rhythm: hit the zone N times before running out of attempts)
+// =========================================================================
+function startMiningMinigame(vein, mapData) {
+  if (Game.energy < 6) { showMessage('พลังงานไม่พอจะขุดแร่'); return; }
+  const roll = Math.random();
+  let oreKey = 'copper';
+  let cumulative = 0;
+  const entries = Object.entries(ORE_TYPES);
+  for (const [key, info] of entries) {
+    cumulative += info.rarity;
+    if (roll <= cumulative) { oreKey = key; break; }
+  }
+  const ore = ORE_TYPES[oreKey];
+  const zoneSize = 0.28;
+  Game.minigame = {
+    type: 'mining',
+    oreKey,
+    vein,
+    cursorPos: 0,
+    direction: 1,
+    speed: 1.4,
+    zoneStart: Math.random() * (1 - zoneSize),
+    zoneSize,
+    hits: 0,
+    hitsNeeded: 3,
+    attemptsLeft: 4
+  };
+
+  document.getElementById('minigame-title').textContent = 'กำลังขุดแร่...';
+  document.getElementById('minigame-hint').textContent = 'กด เว้นวรรค หรือแตะตอนแถบอยู่ในโซนสีเขียว ขุดให้ครบ 3 ครั้ง';
+  document.getElementById('minigame-zone').style.left = (Game.minigame.zoneStart * 100) + '%';
+  document.getElementById('minigame-zone').style.width = (zoneSize * 100) + '%';
+  document.getElementById('minigame-overlay').classList.add('show');
+}
+
+function handleMinigameInput() {
+  const mg = Game.minigame;
+  if (!mg) return;
+  if (mg.type === 'fishing') {
+    const inZone = mg.cursorPos >= mg.zoneStart && mg.cursorPos <= mg.zoneStart + mg.zoneSize;
+    if (inZone) {
+      finishMinigame(true);
+    } else {
+      mg.attemptsLeft -= 1;
+      if (mg.attemptsLeft <= 0) {
+        finishMinigame(false);
+      } else {
+        showMessage('พลาดจังหวะ ลองอีกครั้ง (' + mg.attemptsLeft + ' ครั้งที่เหลือ)');
+      }
+    }
+  } else if (mg.type === 'mining') {
+    const inZone = mg.cursorPos >= mg.zoneStart && mg.cursorPos <= mg.zoneStart + mg.zoneSize;
+    if (inZone) {
+      mg.hits += 1;
+      if (mg.hits >= mg.hitsNeeded) {
+        finishMinigame(true);
+      } else {
+        showMessage('ขุดโดน! (' + mg.hits + '/' + mg.hitsNeeded + ')');
+        // re-roll a new zone position for next hit, slightly faster
+        mg.zoneStart = Math.random() * (1 - mg.zoneSize);
+        document.getElementById('minigame-zone').style.left = (mg.zoneStart * 100) + '%';
+        mg.speed *= 1.08;
+      }
+    } else {
+      mg.attemptsLeft -= 1;
+      if (mg.attemptsLeft <= 0) {
+        finishMinigame(false);
+      } else {
+        showMessage('พลาด! ก้อนหินแข็งเกินไป ลองอีกครั้ง (' + mg.attemptsLeft + ' ครั้งที่เหลือ)');
+      }
+    }
+  }
+}
+
+function finishMinigame(success) {
+  const mg = Game.minigame;
+  document.getElementById('minigame-overlay').classList.remove('show');
+  Game.minigame = null;
+  Game.energy = Math.max(0, Game.energy - 5);
+  updateHUD();
+
+  if (mg.type === 'fishing') {
+    if (success) {
+      const fish = FISH_TYPES[mg.fishKey];
+      addToInventory(mg.fishKey, 1);
+      showMessage('ตกปลาได้ ' + fish.name + '! ใส่กระเป๋าแล้ว');
+    } else {
+      showMessage('ปลาหลุดไปซะแล้ว ลองใหม่อีกครั้งนะ');
+    }
+  } else if (mg.type === 'mining') {
+    if (success) {
+      const ore = ORE_TYPES[mg.oreKey];
+      addToInventory(mg.oreKey, 1);
+      if (mg.vein) { mg.vein.active = false; mg.vein.mesh.visible = false; }
+      showMessage('ขุดได้ ' + ore.name + '! ใส่กระเป๋าแล้ว');
+    } else {
+      showMessage('ขุดไม่สำเร็จ ก้อนแร่แตกเปล่า ลองหาก้อนใหม่นะ');
+      if (mg.vein) { mg.vein.active = false; mg.vein.mesh.visible = false; }
+    }
+  }
+}
+
+
+function buildTownScene() {
+  const scene = new THREE.Scene();
+  const season = SEASONS[Game.season];
+  addStandardLighting(scene, season.sky);
+  makeGroundTexture(scene, TOWN_SIZE, getStoneTexture());
+
+  const solids = [];
+
+  // shop building
+  const shop = makeBuilding(0, -5, 4, 3, 2.6, 0xd8b070, 0x8a4a2a);
+  shop.userData.type = 'shop';
+  scene.add(shop);
+  solids.push(shop);
+  scene.add(makeMarker(0, -3, 'ร้านค้า', 0xfac775));
+
+  // some town decoration buildings (non-interactive, just solids)
+  const deco1 = makeBuilding(-6, 2, 2.6, 2.6, 2.0, 0xc9a878, 0x6b4a2a);
+  const deco2 = makeBuilding(6, 3, 2.6, 2.6, 2.0, 0xc9a878, 0x6b4a2a);
+  scene.add(deco1, deco2);
+  solids.push(deco1, deco2);
+
+  // a well in the center as decoration
+  const wellMat = new THREE.MeshLambertMaterial({ color: 0x888780 });
+  const well = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.6, 16), wellMat);
+  well.position.set(0, 0.3, 4);
+  well.castShadow = true;
+  well.userData.solid = true;
+  well.userData.radius = 0.9;
+  scene.add(well);
+  solids.push(well);
+
+  // a few trees lining the edges
+  const decor = new THREE.Group();
+  [[-9, -9], [9, -9], [-9, 9], [9, 9]].forEach(([x, z]) => decor.add(makeSimpleTree(x, z)));
+  scene.add(decor);
+  solids.push(...decor.children);
+
+  // river along the west edge, with fishing spots
+  const waterMat = new THREE.MeshLambertMaterial({ map: makeWaterTexture(), transparent: true, opacity: 0.92 });
+  const river = new THREE.Mesh(new THREE.PlaneGeometry(3, TOWN_SIZE), waterMat);
+  river.rotation.x = -Math.PI / 2;
+  river.position.set(-TOWN_HALF + 1.5, 0.03, 0);
+  river.receiveShadow = true;
+  scene.add(river);
+
+  const bankMat = new THREE.MeshLambertMaterial({ color: 0x8a7a5a });
+  const bank = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.15, TOWN_SIZE), bankMat);
+  bank.position.set(-TOWN_HALF + 3.1, 0.07, 0);
+  scene.add(bank);
+
+  const fishSpots = [
+    { x: -TOWN_HALF + 3.3, z: -6 },
+    { x: -TOWN_HALF + 3.3, z: 0 },
+    { x: -TOWN_HALF + 3.3, z: 6 }
+  ];
+  fishSpots.forEach(spot => scene.add(makeMarker(spot.x, spot.z, 'จุดตกปลา', 0x378add)));
+
+  // exit back to farm (south edge)
+  const exits = [];
+  const exitFarm = { x: 0, z: TOWN_HALF - 0.5, targetMap: 'farm', radius: 1.6 };
+  exits.push(exitFarm);
+  scene.add(makeMarker(exitFarm.x, exitFarm.z, 'กลับฟาร์ม', 0x639922));
+
+  const mapData = {
+    scene,
+    exits,
+    bounds: { minX: -TOWN_HALF + 3.2, maxX: TOWN_HALF - 0.6, minZ: -TOWN_HALF + 0.6, maxZ: TOWN_HALF - 0.6 },
+    solids,
+    shopDoor: { x: 0, z: -3, radius: 1.6 },
+    spawn: { x: 0, z: TOWN_HALF - 3.5 },
+    fishSpots,
+    riverBounds: { minX: -TOWN_HALF + 0.5, maxX: -TOWN_HALF + 2.8 }
+  };
+
+  // NPCs (added after mapData exists so npcs array attaches to the real object)
+  addNPCsToTown(mapData);
+
+  return mapData;
+}
+
+function openShopModal() {
+  const list = document.getElementById('shop-sell-list');
+  list.innerHTML = '';
+
+  const sellableTypes = [
+    { items: CROPS, label: 'ผลผลิตจากฟาร์ม' },
+    { items: FOREST_ITEMS, label: 'ของป่า' },
+    { items: ANIMAL_PRODUCTS, label: 'ผลิตภัณฑ์จากสัตว์' },
+    { items: WILDLIFE_DROPS, label: 'ของล่าจากสัตว์ป่า' },
+    { items: ORE_TYPES, label: 'แร่จากถ้ำ' },
+    { items: FISH_TYPES, label: 'ปลาจากแม่น้ำ' }
+  ];
+
+  let hasAny = false;
+  sellableTypes.forEach(group => {
+    const ownedKeys = Object.keys(group.items).filter(k => Game.inventory[k] > 0);
+    if (ownedKeys.length === 0) return;
+    hasAny = true;
+    const header = document.createElement('div');
+    header.style.fontSize = '12px';
+    header.style.fontWeight = '700';
+    header.style.margin = '8px 0 2px';
+    header.style.color = '#8a6038';
+    header.textContent = group.label;
+    list.appendChild(header);
+
+    ownedKeys.forEach(key => {
+      const info = group.items[key];
+      const qty = Game.inventory[key];
+      const row = document.createElement('div');
+      row.className = 'shop-item-row';
+      row.innerHTML = '<span>' + info.name + ' x' + qty + ' (ราคา ' + info.sellPrice + '🪙/ชิ้น)</span>';
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.style.fontSize = '12px';
+      btn.style.padding = '4px 8px';
+      btn.textContent = 'ขายทั้งหมด';
+      btn.onclick = () => {
+        const total = qty * info.sellPrice;
+        Game.gold += total;
+        delete Game.inventory[key];
+        updateHUD();
+        showMessage('ขาย' + info.name + ' ' + qty + ' ชิ้น ได้ ' + total + ' เหรียญ');
+        openShopModal(); // refresh
+      };
+      row.appendChild(btn);
+      list.appendChild(row);
+    });
+  });
+
+  if (!hasAny) {
+    list.innerHTML = '<p style="font-size:13px;color:#8a6038;">กระเป๋ายังไม่มีของให้ขาย ลองไปเก็บเกี่ยวผักหรือหาของป่าก่อนนะ</p>';
+  }
+
+  document.getElementById('shop-modal').classList.add('open');
+}
+
+// =========================================================================
+// FOREST MAP
+// =========================================================================
+const FOREST_SIZE = 26;
+const FOREST_HALF = FOREST_SIZE / 2;
+
+function buildForestScene() {
+  const scene = new THREE.Scene();
+  const season = SEASONS[Game.season];
+  addStandardLighting(scene, season.sky);
+  scene.fog = new THREE.Fog(season.sky, 10, 26);
+  makeGroundTexture(scene, FOREST_SIZE, getForestFloorTexture());
+
+  const solids = [];
+  const decor = new THREE.Group();
+
+  // player spawns near the south edge (returning from farm) - keep that area clear of obstacles
+  const forestSpawn = { x: 0, z: FOREST_HALF - 3.5 };
+  const SPAWN_CLEAR_RADIUS = 3.5;
+
+  // dense trees, but spread evenly across the whole map area (not clustered near center)
+  // and spaced apart enough that the player can always walk between them
+  const TREE_MIN_GAP = 1.7; // min distance between tree centers so a 0.3-radius player can pass through
+  const treePositions = [];
+  let placeAttempts = 0;
+  while (treePositions.length < 34 && placeAttempts < 400) {
+    placeAttempts++;
+    const angle = Math.random() * Math.PI * 2;
+    // sqrt(random) gives uniform distribution across the disk area, avoiding center-clustering
+    const dist = 2 + Math.sqrt(Math.random()) * (FOREST_HALF - 3);
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+    if (Math.hypot(x - forestSpawn.x, z - forestSpawn.z) < SPAWN_CLEAR_RADIUS) continue; // keep spawn area walkable
+    if (treePositions.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < TREE_MIN_GAP)) continue; // keep trees spaced apart
+    treePositions.push([x, z]);
+  }
+  treePositions.forEach(([x, z]) => decor.add(makeSimpleTree(x, z)));
+  scene.add(decor);
+  solids.push(...decor.children);
+
+  // forage spots: mushroom, berry, log, rare truffle
+  const forageSpots = [];
+  const forageDefs = [
+    { type: 'mushroom', count: 6 },
+    { type: 'berry', count: 5 },
+    { type: 'log', count: 5 },
+    { type: 'truffle', count: 2 }
+  ];
+  forageDefs.forEach(def => {
+    for (let i = 0; i < def.count; i++) {
+      let x, z, tries = 0;
+      do {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 2 + Math.random() * (FOREST_HALF - 3);
+        x = Math.cos(angle) * dist;
+        z = Math.sin(angle) * dist;
+        tries++;
+      } while (tries < 20 && treePositions.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 0.8));
+
+      const info = FOREST_ITEMS[def.type];
+      const mat = new THREE.MeshLambertMaterial({ color: info.color });
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), mat);
+      mesh.position.set(x, 0.18, z);
+      mesh.castShadow = true;
+      scene.add(mesh);
+      forageSpots.push({ type: def.type, x, z, mesh, collected: false });
+    }
+  });
+
+  // wildlife: rabbits, boars, wolves roam the forest
+  const wildlife = [];
+  const wildlifeDefs = [
+    { type: 'rabbit', count: 4 },
+    { type: 'boar', count: 2 },
+    { type: 'wolf', count: 2 }
+  ];
+  wildlifeDefs.forEach(def => {
+    for (let i = 0; i < def.count; i++) {
+      let x, z, tries = 0;
+      do {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 4 + Math.random() * (FOREST_HALF - 5);
+        x = Math.cos(angle) * dist;
+        z = Math.sin(angle) * dist;
+        tries++;
+      } while (tries < 20 && treePositions.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 0.9));
+      wildlife.push(spawnWildlife(scene, def.type, x, z));
+    }
+  });
+
+  // exit back to farm (south edge, since farm's north edge leads here)
+  const exits = [];
+  const exitFarm = { x: 0, z: FOREST_HALF - 0.5, targetMap: 'farm', radius: 1.6 };
+  exits.push(exitFarm);
+  scene.add(makeMarker(exitFarm.x, exitFarm.z, 'กลับฟาร์ม', 0x639922));
+
+  return {
+    scene,
+    exits,
+    bounds: { minX: -FOREST_HALF + 0.6, maxX: FOREST_HALF - 0.6, minZ: -FOREST_HALF + 0.6, maxZ: FOREST_HALF - 0.6 },
+    solids,
+    forageSpots,
+    wildlife,
+    spawn: { x: 0, z: FOREST_HALF - 3.5 }
+  };
+}
+
+function tryForageNearby(mapData, px, pz) {
+  const spot = mapData.forageSpots.find(s => !s.collected && Math.hypot(s.x - px, s.z - pz) < 1.0);
+  if (!spot) { showMessage('ไม่มีของป่าให้เก็บแถวนี้ ลองเดินสำรวจดูสิ'); return; }
+  const info = FOREST_ITEMS[spot.type];
+  spot.collected = true;
+  spot.mesh.visible = false;
+  addToInventory(spot.type, 1);
+  showMessage('เก็บ' + info.name + 'ได้แล้ว ใส่กระเป๋าไว้ขายที่เมืองได้');
+}
+
+// =========================================================================
+// WILDLIFE + HUNTING COMBAT
+// =========================================================================
+function makeWildlifeMesh(typeKey) {
+  const info = WILDLIFE_TYPES[typeKey];
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: info.color });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.75), bodyMat);
+  body.position.y = 0.28;
+  body.castShadow = true;
+  group.add(body);
+  const headMat = new THREE.MeshLambertMaterial({ color: info.color });
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.3), headMat);
+  head.position.set(0, 0.38, 0.45);
+  head.castShadow = true;
+  group.add(head);
+  if (typeKey === 'rabbit') {
+    const earMat = new THREE.MeshLambertMaterial({ color: info.color });
+    [[-0.08, 0], [0.08, 0]].forEach(([ex]) => {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 6), earMat);
+      ear.position.set(ex, 0.6, 0.42);
+      group.add(ear);
+    });
+  } else {
+    // tusks / snout accents for boar, ears for wolf
+    const snoutMat = new THREE.MeshLambertMaterial({ color: 0x2c2c2a });
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.1), snoutMat);
+    snout.position.set(0, 0.32, 0.62);
+    group.add(snout);
+  }
+  const legMat = new THREE.MeshLambertMaterial({ color: 0x2c2c2a });
+  [[-0.16, -0.28], [0.16, -0.28], [-0.16, 0.28], [0.16, 0.28]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.24, 0.08), legMat);
+    leg.position.set(lx, 0.1, lz);
+    group.add(leg);
+  });
+  group.scale.setScalar(info.scale / 0.6);
+  return group;
+}
+
+function spawnWildlife(scene, typeKey, x, z) {
+  const info = WILDLIFE_TYPES[typeKey];
+  const mesh = makeWildlifeMesh(typeKey);
+  mesh.position.set(x, 0, z);
+  scene.add(mesh);
+  return {
+    type: typeKey, x, z, mesh,
+    hp: info.hp, maxHp: info.hp,
+    state: 'idle', // idle | chase | flee | dead
+    wanderTarget: null,
+    nextWanderAt: 0,
+    alive: true
+  };
+}
+
+function pickNewWanderTarget(animal, halfExtent) {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 1 + Math.random() * 3;
+  animal.wanderTarget = {
+    x: Math.max(-halfExtent + 1, Math.min(halfExtent - 1, animal.x + Math.cos(angle) * dist)),
+    z: Math.max(-halfExtent + 1, Math.min(halfExtent - 1, animal.z + Math.sin(angle) * dist))
+  };
+}
+
+function updateWildlife(mapData, delta) {
+  if (!mapData.wildlife) return;
+  const now = performance.now();
+  mapData.wildlife.forEach(animal => {
+    if (!animal.alive) return;
+    const info = WILDLIFE_TYPES[animal.type];
+    const dx = Game.player.x - animal.x;
+    const dz = Game.player.z - animal.z;
+    const distToPlayer = Math.hypot(dx, dz);
+
+    if (animal.state !== 'flee' && distToPlayer < info.detectRange) {
+      animal.state = 'chase';
+    } else if (animal.state === 'chase' && distToPlayer > info.detectRange * 1.4) {
+      animal.state = 'idle';
+    }
+
+    let moveX = 0, moveZ = 0;
+    if (animal.state === 'chase') {
+      if (distToPlayer > info.attackRange * 0.8) {
+        moveX = dx / (distToPlayer || 1);
+        moveZ = dz / (distToPlayer || 1);
+      }
+      if (distToPlayer < info.attackRange && now > (animal.nextAttackAt || 0)) {
+        animal.nextAttackAt = now + 1100;
+        damagePlayer(info.damage, info.name + 'โจมตีคุณ');
+        if (info.fleeChance > 0 && Math.random() < info.fleeChance) animal.state = 'flee';
+      }
+    } else if (animal.state === 'flee') {
+      moveX = -dx / (distToPlayer || 1);
+      moveZ = -dz / (distToPlayer || 1);
+      if (distToPlayer > info.detectRange * 1.6) animal.state = 'idle';
+    } else {
+      // idle wander
+      if (!animal.wanderTarget || now > animal.nextWanderAt) {
+        pickNewWanderTarget(animal, FOREST_HALF - 1);
+        animal.nextWanderAt = now + 2000 + Math.random() * 2000;
+      }
+      const wx = animal.wanderTarget.x - animal.x;
+      const wz = animal.wanderTarget.z - animal.z;
+      const wd = Math.hypot(wx, wz);
+      if (wd > 0.3) { moveX = wx / wd; moveZ = wz / wd; }
+    }
+
+    const mag = Math.hypot(moveX, moveZ);
+    if (mag > 0.01) {
+      const speed = info.speed * (animal.state === 'flee' ? 1.3 : animal.state === 'chase' ? 1.0 : 0.5);
+      animal.x += (moveX / mag) * speed * delta;
+      animal.z += (moveZ / mag) * speed * delta;
+      animal.mesh.rotation.y = Math.atan2(moveX, moveZ);
+    }
+    animal.mesh.position.set(animal.x, 0, animal.z);
+  });
+}
+
+function damagePlayer(amount, reason) {
+  const now = performance.now();
+  if (now < Game.player.invulnerableUntil) return;
+  Game.player.invulnerableUntil = now + 700;
+  Game.health = Math.max(0, Game.health - amount);
+  updateHUD();
+  flashDamage();
+  showMessage(reason + ' (-' + amount + ' HP)');
+  if (Game.health <= 0) {
+    handlePlayerDowned();
+  }
+}
+
+function flashDamage() {
+  const el = document.getElementById('damage-flash');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 150);
+}
+
+function handlePlayerDowned() {
+  showMessage('คุณบาดเจ็บหนักเกินไป สลบไปและถูกพาตัวกลับบ้าน');
+  Game.health = 50;
+  Game.energy = Math.min(Game.energy, 30);
+  getOrBuildMap('farm'); // ensure farm exists so returning from the house works normally
+  switchMap('house');
+}
+
+function attackNearbyWildlife(mapData, px, pz) {
+  if (!mapData.wildlife) return false;
+  const target = mapData.wildlife.find(a => a.alive && Math.hypot(a.x - px, a.z - pz) < 1.4);
+  if (!target) return false;
+  const info = WILDLIFE_TYPES[target.type];
+  const playerDamage = 12;
+  target.hp -= playerDamage;
+  flashWildlifeHit(target);
+  if (target.hp <= 0) {
+    target.alive = false;
+    target.mesh.visible = false;
+    target.state = 'dead';
+    const dropCount = 1 + (Math.random() < 0.3 ? 1 : 0);
+    addToInventory(info.sellMeat, dropCount);
+    showMessage('ล่า' + info.name + 'สำเร็จ ได้ของป่าใส่กระเป๋า ' + dropCount + ' ชิ้น');
+  } else {
+    target.state = 'chase';
+    showMessage('โจมตี' + info.name + ' (เหลือ ' + Math.max(0, target.hp) + '/' + target.maxHp + ' HP)');
+  }
+  return true;
+}
+
+function flashWildlifeHit(target) {
+  // brief knockback nudge so attacks feel impactful (kept within map bounds)
+  const dx = target.x - Game.player.x;
+  const dz = target.z - Game.player.z;
+  const dist = Math.hypot(dx, dz) || 1;
+  const limit = FOREST_HALF - 1.5;
+  target.x = Math.max(-limit, Math.min(limit, target.x + (dx / dist) * 0.35));
+  target.z = Math.max(-limit, Math.min(limit, target.z + (dz / dist) * 0.35));
+  target.mesh.position.set(target.x, 0, target.z);
+}
+
+// =========================================================================
+// HOUSE INTERIOR MAP
+// =========================================================================
+const HOUSE_SIZE = 9;
+const HOUSE_HALF = HOUSE_SIZE / 2;
+
+function buildHouseScene() {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x3a2e22);
+  const ambient = new THREE.AmbientLight(0xffe8c0, 0.85);
+  scene.add(ambient);
+  const lamp = new THREE.PointLight(0xffd9a0, 1.0, 12);
+  lamp.position.set(0, 3, 0);
+  scene.add(lamp);
+
+  const floorMat = new THREE.MeshLambertMaterial({ color: 0x8a6038 });
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(HOUSE_SIZE, HOUSE_SIZE), floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0xd8c39a });
+  const wallH = 2.6;
+  const wallN = new THREE.Mesh(new THREE.BoxGeometry(HOUSE_SIZE, wallH, 0.2), wallMat);
+  wallN.position.set(0, wallH / 2, -HOUSE_HALF);
+  scene.add(wallN);
+  const wallS = wallN.clone(); wallS.position.z = HOUSE_HALF; scene.add(wallS);
+  const wallE = new THREE.Mesh(new THREE.BoxGeometry(0.2, wallH, HOUSE_SIZE), wallMat);
+  wallE.position.set(HOUSE_HALF, wallH / 2, 0);
+  scene.add(wallE);
+  const wallW = wallE.clone(); wallW.position.x = -HOUSE_HALF; scene.add(wallW);
+
+  const solids = [wallN, wallS, wallE, wallW];
+  solids.forEach(w => { w.userData.solid = true; });
+  wallN.userData.radius = 0.3; wallS.userData.radius = 0.3;
+  wallE.userData.radius = 0.3; wallW.userData.radius = 0.3;
+
+  // bed
+  const bedFrameMat = new THREE.MeshLambertMaterial({ color: 0x6b4a2a });
+  const bedFrame = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, 2.2), bedFrameMat);
+  bedFrame.position.set(-HOUSE_HALF + 1.2, 0.15, -HOUSE_HALF + 1.5);
+  bedFrame.castShadow = true;
+  scene.add(bedFrame);
+  const blanketMat = new THREE.MeshLambertMaterial({ color: 0x378add });
+  const blanket = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.1, 1.6), blanketMat);
+  blanket.position.set(-HOUSE_HALF + 1.2, 0.35, -HOUSE_HALF + 1.7);
+  scene.add(blanket);
+  scene.add(makeMarker(-HOUSE_HALF + 1.2, -HOUSE_HALF + 1.5, 'เตียงนอน', 0x378add));
+
+  // simple table + chest decor
+  const tableMat = new THREE.MeshLambertMaterial({ color: 0x8a6038 });
+  const table = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.5, 0.7), tableMat);
+  table.position.set(HOUSE_HALF - 1.2, 0.25, HOUSE_HALF - 1.2);
+  table.castShadow = true;
+  scene.add(table);
+  solids.push(table);
+  table.userData.solid = true;
+  table.userData.radius = 0.6;
+
+  const exits = [];
+  const exitFarm = { x: 0, z: HOUSE_HALF - 0.5, targetMap: 'farm', radius: 1.1, isDoor: true };
+  exits.push(exitFarm);
+  scene.add(makeMarker(exitFarm.x, exitFarm.z, 'ออกไปฟาร์ม', 0x639922));
+
+  return {
+    scene,
+    exits,
+    bounds: { minX: -HOUSE_HALF + 0.5, maxX: HOUSE_HALF - 0.5, minZ: -HOUSE_HALF + 0.5, maxZ: HOUSE_HALF - 0.5 },
+    solids,
+    bedSpot: { x: -HOUSE_HALF + 1.2, z: -HOUSE_HALF + 1.5, radius: 1.2 },
+    spawn: { x: 0, z: 0 }
+  };
+}
+
+// =========================================================================
+// CAVE / MINE MAP
+// =========================================================================
+const CAVE_SIZE = 22;
+const CAVE_HALF = CAVE_SIZE / 2;
+
+function buildCaveScene() {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x14110f);
+  scene.fog = new THREE.Fog(0x14110f, 6, 20);
+
+  const ambient = new THREE.AmbientLight(0x9aa8c0, 0.35);
+  scene.add(ambient);
+  // a few warm torch-like point lights scattered for atmosphere
+  const torchPositions = [[-6, -6], [6, -6], [-6, 6], [6, 6], [0, 0]];
+  torchPositions.forEach(([x, z]) => {
+    const torch = new THREE.PointLight(0xffa040, 0.9, 9);
+    torch.position.set(x, 1.6, z);
+    scene.add(torch);
+    const torchMat = new THREE.MeshLambertMaterial({ color: 0x4a3526 });
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.2, 6), torchMat);
+    post.position.set(x, 0.6, z);
+    scene.add(post);
+  });
+
+  makeGroundTexture(scene, CAVE_SIZE, getCaveFloorTexture());
+
+  // cave walls (boundary) made of rock-colored boxes, plus scattered boulders as obstacles
+  const solids = [];
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0x3a3530 });
+  const wallH = 3.4;
+  const wallN = new THREE.Mesh(new THREE.BoxGeometry(CAVE_SIZE, wallH, 0.6), wallMat);
+  wallN.position.set(0, wallH / 2, -CAVE_HALF);
+  scene.add(wallN);
+  const wallE = new THREE.Mesh(new THREE.BoxGeometry(0.6, wallH, CAVE_SIZE), wallMat);
+  wallE.position.set(CAVE_HALF, wallH / 2, 0);
+  scene.add(wallE);
+  const wallW = new THREE.Mesh(new THREE.BoxGeometry(0.6, wallH, CAVE_SIZE), wallMat);
+  wallW.position.set(-CAVE_HALF, wallH / 2, 0);
+  scene.add(wallW);
+  [wallN, wallE, wallW].forEach(w => { w.userData.solid = true; w.userData.radius = 0.4; solids.push(w); });
+
+  // south wall split into two segments, leaving a gap in the middle for the exit
+  const gapHalfWidth = 1.8;
+  const segLength = (CAVE_SIZE - gapHalfWidth * 2) / 2;
+  const wallS1 = new THREE.Mesh(new THREE.BoxGeometry(segLength, wallH, 0.6), wallMat);
+  wallS1.position.set(-CAVE_HALF + segLength / 2, wallH / 2, CAVE_HALF);
+  scene.add(wallS1);
+  const wallS2 = new THREE.Mesh(new THREE.BoxGeometry(segLength, wallH, 0.6), wallMat);
+  wallS2.position.set(CAVE_HALF - segLength / 2, wallH / 2, CAVE_HALF);
+  scene.add(wallS2);
+  [wallS1, wallS2].forEach(w => { w.userData.solid = true; w.userData.radius = 0.4; solids.push(w); });
+
+  // boulders scattered as obstacles
+  const boulderMat = new THREE.MeshLambertMaterial({ color: 0x55504a });
+  const boulderPositions = [];
+  for (let i = 0; i < 10; i++) {
+    let x, z, tries = 0;
+    do {
+      x = (Math.random() * 2 - 1) * (CAVE_HALF - 2);
+      z = (Math.random() * 2 - 1) * (CAVE_HALF - 2);
+      tries++;
+    } while (tries < 20 && Math.hypot(x, z) < 2.5);
+    boulderPositions.push([x, z]);
+    const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.3, 0), boulderMat);
+    boulder.position.set(x, 0.4, z);
+    boulder.castShadow = true;
+    boulder.userData.solid = true;
+    boulder.userData.radius = 0.55;
+    scene.add(boulder);
+    solids.push(boulder);
+  }
+
+  // ore veins: glowing rocks embedded in walls/floor that can be mined
+  const oreVeins = [];
+  for (let i = 0; i < 9; i++) {
+    let x, z, tries = 0;
+    do {
+      x = (Math.random() * 2 - 1) * (CAVE_HALF - 1.5);
+      z = (Math.random() * 2 - 1) * (CAVE_HALF - 1.5);
+      tries++;
+    } while (tries < 25 && (Math.hypot(x, z) < 2.2 || boulderPositions.some(([bx, bz]) => Math.hypot(bx - x, bz - z) < 1.1)));
+
+    const veinMat = new THREE.MeshLambertMaterial({ color: 0x8a8278, emissive: 0xc9a05a, emissiveIntensity: 0.15 });
+    const veinMesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.32, 0), veinMat);
+    veinMesh.position.set(x, 0.28, z);
+    veinMesh.castShadow = true;
+    scene.add(veinMesh);
+    oreVeins.push({ x, z, mesh: veinMesh, active: true });
+  }
+
+  const exits = [];
+  const exitFarm = { x: 0, z: CAVE_HALF - 0.5, targetMap: 'farm', radius: 1.6 };
+  exits.push(exitFarm);
+  scene.add(makeMarker(exitFarm.x, exitFarm.z, 'ออกจากถ้ำ', 0x639922));
+
+  return {
+    scene,
+    exits,
+    bounds: { minX: -CAVE_HALF + 0.8, maxX: CAVE_HALF - 0.8, minZ: -CAVE_HALF + 0.8, maxZ: CAVE_HALF - 0.8 },
+    solids,
+    oreVeins,
+    spawn: { x: 0, z: CAVE_HALF - 3.2 }
+  };
+}
+
+// =========================================================================
+// ANIMALS (pet pen on farm map)
+// =========================================================================
+const ANIMAL_TYPES = [
+  { type: 'chicken', name: 'ไก่', product: 'egg', productName: 'ไข่', color: 0xfaeeda, bodyColor: 0xfdf6e3 },
+  { type: 'cow', name: 'วัว', product: 'milk', productName: 'นม', color: 0xf1efe8, bodyColor: 0xffffff },
+  { type: 'sheep', name: 'แกะ', product: 'wool', productName: 'ขนแกะ', color: 0xe8e8e0, bodyColor: 0xf5f5f0 }
+];
+const ANIMAL_PRODUCTS = {
+  egg: { name: 'ไข่ไก่', sellPrice: 8 },
+  milk: { name: 'นมวัว', sellPrice: 15 },
+  wool: { name: 'ขนแกะ', sellPrice: 12 }
+};
+
+function makeAnimalMesh(typeInfo) {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: typeInfo.bodyColor });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.7), bodyMat);
+  body.position.y = 0.3;
+  body.castShadow = true;
+  group.add(body);
+  const headMat = new THREE.MeshLambertMaterial({ color: typeInfo.bodyColor });
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), headMat);
+  head.position.set(0, 0.4, 0.45);
+  head.castShadow = true;
+  group.add(head);
+  const legMat = new THREE.MeshLambertMaterial({ color: 0x444441 });
+  [[-0.18, -0.25], [0.18, -0.25], [-0.18, 0.25], [0.18, 0.25]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.25, 0.08), legMat);
+    leg.position.set(lx, 0.1, lz);
+    group.add(leg);
+  });
+  return group;
+}
+
+function addAnimalToFarm(mapData, typeKey) {
+  const typeInfo = ANIMAL_TYPES.find(a => a.type === typeKey);
+  const mesh = makeAnimalMesh(typeInfo);
+  const angle = Math.random() * Math.PI * 2;
+  const dist = Math.random() * 1.3;
+  const x = mapData.petPenCenter.x + Math.cos(angle) * dist;
+  const z = mapData.petPenCenter.z + Math.sin(angle) * dist;
+  mesh.position.set(x, 0, z);
+  mapData.scene.add(mesh);
+  const animal = { type: typeKey, x, z, mesh, fed: false, readyProduct: false, productMarker: null };
+  mapData.pets.push(animal);
+  return animal;
+}
+
+function setAnimalProductMarker(mapData, animal, show) {
+  if (animal.productMarker) {
+    mapData.scene.remove(animal.productMarker);
+    animal.productMarker = null;
+  }
+  if (show) {
+    const typeInfo = ANIMAL_TYPES.find(a => a.type === animal.type);
+    const mat = new THREE.MeshLambertMaterial({ color: 0xfac775, emissive: 0xfac775, emissiveIntensity: 0.4 });
+    const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0), mat);
+    marker.position.set(animal.x, 0.9, animal.z);
+    mapData.scene.add(marker);
+    animal.productMarker = marker;
+  }
+}
+
+function feedNearbyAnimal(mapData, px, pz) {
+  const animal = mapData.pets.find(a => !a.fed && Math.hypot(a.x - px, a.z - pz) < 1.3);
+  if (!animal) {
+    if (mapData.pets.length === 0) { showMessage('ยังไม่มีสัตว์เลี้ยง ลองซื้อจากคอกดูสิ'); return; }
+    showMessage('สัตว์เลี้ยงตรงนี้อิ่มแล้ว หรือยังอยู่ไกลเกินไป');
+    return;
+  }
+  if (Game.energy < 5) { showMessage('พลังงานไม่พอจะให้อาหาร'); return; }
+  animal.fed = true;
+  Game.energy -= 5;
+  updateHUD();
+  const typeInfo = ANIMAL_TYPES.find(a => a.type === animal.type);
+  showMessage('ให้อาหาร' + typeInfo.name + 'แล้ว');
+}
+
+function collectNearbyProduct(mapData, px, pz) {
+  const animal = mapData.pets.find(a => a.readyProduct && Math.hypot(a.x - px, a.z - pz) < 1.3);
+  if (!animal) return false;
+  const typeInfo = ANIMAL_TYPES.find(a => a.type === animal.type);
+  animal.readyProduct = false;
+  setAnimalProductMarker(mapData, animal, false);
+  addToInventory(typeInfo.product, 1);
+  showMessage('เก็บ' + typeInfo.productName + 'จาก' + typeInfo.name + 'ใส่กระเป๋าแล้ว');
+  return true;
+}
+
+function buyAnimal(mapData) {
+  if (Game.gold < 30) { showMessage('เงินไม่พอซื้อสัตว์เลี้ยง (ต้องการ 30🪙)'); return; }
+  Game.gold -= 30;
+  const typeInfo = ANIMAL_TYPES[Math.floor(Math.random() * ANIMAL_TYPES.length)];
+  addAnimalToFarm(mapData, typeInfo.type);
+  updateHUD();
+  showMessage('ได้' + typeInfo.name + 'มาเลี้ยงในคอกแล้ว');
+}
+
+// =========================================================================
+// MAP MANAGEMENT
+// =========================================================================
+function getOrBuildMap(name) {
+  if (Game.scenes[name]) return Game.scenes[name];
+  let data;
+  if (name === 'farm') data = buildFarmScene();
+  else if (name === 'town') data = buildTownScene();
+  else if (name === 'forest') data = buildForestScene();
+  else if (name === 'house') data = buildHouseScene();
+  else if (name === 'cave') data = buildCaveScene();
+  Game.scenes[name] = data;
+  return data;
+}
+
+function switchMap(name, spawnOverride) {
+  const prevMap = Game.currentMap;
+  const data = getOrBuildMap(name);
+  Game.currentMap = name;
+
+  // remove player from old scene, add to new
+  if (Game.player.mesh.parent) Game.player.mesh.parent.remove(Game.player.mesh);
+  data.scene.add(Game.player.mesh);
+
+  let spawn = spawnOverride;
+  if (!spawn) {
+    if (name === 'farm' && prevMap === 'town') spawn = data.fromTownSpawn;
+    else if (name === 'farm' && prevMap === 'forest') spawn = data.fromForestSpawn;
+    else if (name === 'farm' && prevMap === 'cave') spawn = data.fromCaveSpawn;
+    else spawn = data.spawn;
+  }
+  Game.player.x = spawn.x;
+  Game.player.z = spawn.z;
+  Game.player.mesh.position.set(spawn.x, 0, spawn.z);
+
+  if (name === 'forest' && Game.selectedTool !== 'forage' && Game.selectedTool !== 'attack') {
+    Game.selectedTool = 'forage';
+  } else if (name === 'farm' && (Game.selectedTool === 'forage' || Game.selectedTool === 'attack')) {
+    Game.selectedTool = 'hoe';
+  }
+
+  updateHUD();
+  refreshToolbarForMap();
+  closeDialogue();
+
+  const mapMessages = {
+    farm: 'กลับมาที่ฟาร์มแล้ว',
+    town: 'มาถึงเมืองแล้ว เดินไปที่ร้านค้าหรือคุยกับชาวเมืองดูสิ',
+    forest: 'เข้าสู่ป่า ลองเดินสำรวจหาของป่าหรือล่าสัตว์ดูสิ',
+    house: 'เข้ามาในบ้านแล้ว เดินไปที่เตียงเพื่อนอนพัก',
+    cave: 'เข้าสู่ถ้ำ มืดและเงียบ ระวังก้อนหินตามทาง ลองขุดแร่ดูสิ'
+  };
+  showMessage(mapMessages[name] || '');
+}
+
+// =========================================================================
+// PLAYER MOVEMENT + CAMERA (orbit, rotatable)
+// =========================================================================
+function setupInput() {
+  window.addEventListener('keydown', (e) => {
+    const key = e.key.toLowerCase();
+    if (['arrowup','arrowdown','arrowleft','arrowright',' ','e'].includes(key)) e.preventDefault();
+    if ((key === 'e' || key === ' ') && !Game.keys[key]) handleInteract();
+    if (key === 'q') Game.camera.angle -= Math.PI / 2;
+    if (key === 'r' && Game.camera) Game.camera.angle += Math.PI / 2;
+    Game.keys[key] = true;
+  });
+  window.addEventListener('keyup', (e) => { Game.keys[e.key.toLowerCase()] = false; });
+
+  document.getElementById('camera-left-btn').onclick = () => { Game.camera.angle -= Math.PI / 4; };
+  document.getElementById('camera-right-btn').onclick = () => { Game.camera.angle += Math.PI / 4; };
+
+  // drag to orbit camera (mouse / touch on canvas, but not on UI)
+  let dragging = false;
+  let lastX = 0;
+  let dragDistance = 0;
+  const dom = Game.renderer.domElement;
+  dom.addEventListener('mousedown', (e) => { dragging = true; lastX = e.clientX; dragDistance = 0; });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    lastX = e.clientX;
+    dragDistance += Math.abs(dx);
+    Game.camera.angle += dx * 0.008;
+  });
+  dom.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) { dragging = true; lastX = e.touches[0].clientX; dragDistance = 0; }
+  }, { passive: true });
+  dom.addEventListener('touchmove', (e) => {
+    if (!dragging || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - lastX;
+    lastX = e.touches[0].clientX;
+    dragDistance += Math.abs(dx);
+    Game.camera.angle += dx * 0.008;
+  }, { passive: true });
+  dom.addEventListener('touchend', () => { dragging = false; });
+
+  setupJoystick();
+  setupClickInteract(() => dragDistance);
+
+  document.getElementById('minigame-overlay').addEventListener('click', () => {
+    if (Game.minigame) handleMinigameInput();
+  });
+  document.getElementById('dialogue-box').addEventListener('click', () => {
+    if (Game.dialogueOpen) closeDialogue();
+  });
+}
+
+function setupJoystick() {
+  const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  if (!isTouchDevice) return;
+  const zone = document.getElementById('joystick-zone');
+  zone.classList.add('visible');
+  const interactBtn = document.getElementById('interact-btn');
+  interactBtn.classList.add('visible');
+  interactBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleInteract();
+  }, { passive: false });
+  interactBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleInteract();
+  });
+  const base = document.getElementById('joy-base');
+  const thumb = document.getElementById('joy-thumb');
+  let active = false;
+  let originX = 0, originY = 0;
+
+  function start(clientX, clientY) {
+    active = true;
+    const rect = base.getBoundingClientRect();
+    originX = rect.left + rect.width / 2;
+    originY = rect.top + rect.height / 2;
+  }
+  function move(clientX, clientY) {
+    if (!active) return;
+    let dx = clientX - originX;
+    let dy = clientY - originY;
+    const max = 35;
+    const dist = Math.hypot(dx, dy);
+    if (dist > max) { dx = (dx / dist) * max; dy = (dy / dist) * max; }
+    thumb.style.left = (32 + dx) + 'px';
+    thumb.style.top = (32 + dy) + 'px';
+    Game.joystick.active = true;
+    Game.joystick.dx = dx / max;
+    Game.joystick.dy = dy / max;
+  }
+  function end() {
+    active = false;
+    Game.joystick.active = false;
+    Game.joystick.dx = 0;
+    Game.joystick.dy = 0;
+    thumb.style.left = '32px';
+    thumb.style.top = '32px';
+  }
+  base.addEventListener('touchstart', (e) => { start(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, { passive: false });
+  window.addEventListener('touchmove', (e) => {
+    if (!active) return;
+    move(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  window.addEventListener('touchend', end);
+}
+
+function setupClickInteract(getDragDistance) {
+  Game.raycaster = new THREE.Raycaster();
+  const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  Game.renderer.domElement.addEventListener('click', (e) => {
+    // on touch devices, the dedicated interact button handles this instead,
+    // so a plain tap on the canvas should only orbit the camera, never act
+    if (isTouchDevice) return;
+    // ignore clicks that were actually camera-drag gestures
+    if (getDragDistance && getDragDistance() > 6) return;
+    handleInteract();
+  });
+}
+
+function getCurrentMapData() {
+  return Game.scenes[Game.currentMap];
+}
+
+function handleInteract() {
+  // if a minigame is active, interact key/click acts as the minigame action button
+  if (Game.minigame) {
+    handleMinigameInput();
+    return;
+  }
+  // if dialogue is open, interact closes it
+  if (Game.dialogueOpen) {
+    closeDialogue();
+    return;
+  }
+
+  const mapData = getCurrentMapData();
+  if (!mapData) return;
+  const px = Game.player.x, pz = Game.player.z;
+
+  if (Game.currentMap === 'farm') {
+    // check house door
+    if (mapData.houseDoor && Math.hypot(mapData.houseDoor.x - px, mapData.houseDoor.z - pz) < mapData.houseDoor.radius) {
+      switchMap('house');
+      return;
+    }
+    // check pet pen interactions: feed / collect / buy
+    const collected = collectNearbyProduct(mapData, px, pz);
+    if (collected) return;
+    const nearPen = Math.hypot(mapData.petPenCenter.x - px, mapData.petPenCenter.z - pz) < 2.2;
+    if (Game.selectedTool === 'feed') {
+      feedNearbyAnimal(mapData, px, pz);
+      return;
+    }
+    if (nearPen && mapData.pets.length < 6) {
+      buyAnimal(mapData);
+      return;
+    }
+    // farming tile interaction
+    const tile = findNearestTile(mapData.tiles, px, pz, 1.3);
+    if (tile) {
+      useToolOnFarmTile(tile, mapData);
+      return;
+    }
+    showMessage('ไม่มีอะไรให้ทำตรงนี้ ลองเดินไปที่แปลงดิน คอกสัตว์ หรือประตูบ้าน');
+  } else if (Game.currentMap === 'town') {
+    // NPC dialogue takes priority
+    const npc = mapData.npcs && mapData.npcs.find(n => Math.hypot(n.x - px, n.z - pz) < 1.4);
+    if (npc) { talkToNPC(npc); return; }
+    // fishing spot
+    const fishSpot = mapData.fishSpots && mapData.fishSpots.find(s => Math.hypot(s.x - px, s.z - pz) < 1.3);
+    if (fishSpot) { startFishingMinigame(); return; }
+    if (Math.hypot(mapData.shopDoor.x - px, mapData.shopDoor.z - pz) < mapData.shopDoor.radius) {
+      openShopModal();
+    } else {
+      showMessage('เดินเข้าไปใกล้ร้านค้า แม่น้ำ หรือชาวเมืองเพื่อโต้ตอบ');
+    }
+  } else if (Game.currentMap === 'forest') {
+    if (Game.selectedTool === 'attack') {
+      const hit = attackNearbyWildlife(mapData, px, pz);
+      if (!hit) showMessage('ไม่มีสัตว์ป่าอยู่ใกล้ๆ ลองเดินสำรวจดูสิ');
+      return;
+    }
+    tryForageNearby(mapData, px, pz);
+  } else if (Game.currentMap === 'house') {
+    if (Math.hypot(mapData.bedSpot.x - px, mapData.bedSpot.z - pz) < mapData.bedSpot.radius) {
+      document.getElementById('sleep-modal').classList.add('open');
+    } else {
+      showMessage('เดินไปที่เตียงเพื่อเข้านอน');
+    }
+  } else if (Game.currentMap === 'cave') {
+    const vein = mapData.oreVeins && mapData.oreVeins.find(v => v.active && Math.hypot(v.x - px, v.z - pz) < 1.3);
+    if (vein) { startMiningMinigame(vein, mapData); return; }
+    showMessage('ไม่มีแร่ให้ขุดตรงนี้ ลองเดินสำรวจในถ้ำดูสิ');
+  }
+}
+
+function checkSolidCollision(mapData, x, z, radius) {
+  if (!mapData.solids) return false;
+  for (const obj of mapData.solids) {
+    if (!obj.userData || !obj.userData.solid) continue;
+    const pos = obj.position;
+    const r = (obj.userData.radius || 0.5) + radius;
+    if (Math.hypot(pos.x - x, pos.z - z) < r) return true;
+  }
+  return false;
+}
+
+function updatePlayerMovement(delta) {
+  let moveX = 0, moveZ = 0;
+  if (Game.keys['w'] || Game.keys['arrowup']) moveZ -= 1;
+  if (Game.keys['s'] || Game.keys['arrowdown']) moveZ += 1;
+  if (Game.keys['a'] || Game.keys['arrowleft']) moveX -= 1;
+  if (Game.keys['d'] || Game.keys['arrowright']) moveX += 1;
+
+  if (Game.joystick.active) {
+    moveX = Game.joystick.dx;
+    moveZ = Game.joystick.dy;
+  }
+
+  const mag = Math.hypot(moveX, moveZ);
+  if (mag > 0.05) {
+    moveX /= mag; moveZ /= mag;
+
+    // move relative to camera angle so controls feel natural while orbiting
+    const camAngle = Game.camera.angle;
+    const cos = Math.cos(camAngle), sin = Math.sin(camAngle);
+    const worldX = moveX * cos - moveZ * sin;
+    const worldZ = moveX * sin + moveZ * cos;
+
+    const speed = Game.player.speed * Math.min(mag, 1);
+    const nx = Game.player.x + worldX * speed * delta;
+    const nz = Game.player.z + worldZ * speed * delta;
+
+    const mapData = getCurrentMapData();
+    const b = mapData.bounds;
+    const clampedX = Math.max(b.minX, Math.min(b.maxX, nx));
+    const clampedZ = Math.max(b.minZ, Math.min(b.maxZ, nz));
+
+    if (!checkSolidCollision(mapData, clampedX, Game.player.z, 0.3)) Game.player.x = clampedX;
+    if (!checkSolidCollision(mapData, Game.player.x, clampedZ, 0.3)) Game.player.z = clampedZ;
+
+    const targetAngle = Math.atan2(worldX, worldZ);
+    Game.player.rotY = targetAngle;
+    Game.player.mesh.rotation.y = targetAngle;
+
+    // simple walk animation
+    const t = performance.now() * 0.012;
+    Game.player.mesh.userData.legL.rotation.x = Math.sin(t) * 0.5;
+    Game.player.mesh.userData.legR.rotation.x = -Math.sin(t) * 0.5;
+  } else {
+    Game.player.mesh.userData.legL.rotation.x = 0;
+    Game.player.mesh.userData.legR.rotation.x = 0;
+  }
+
+  Game.player.mesh.position.set(Game.player.x, 0, Game.player.z);
+
+  // check exits
+  const mapData = getCurrentMapData();
+  if (mapData.exits) {
+    for (const exit of mapData.exits) {
+      if (Math.hypot(exit.x - Game.player.x, exit.z - Game.player.z) < exit.radius) {
+        switchMap(exit.targetMap);
+        break;
+      }
+    }
+  }
+}
+
+function updateCamera() {
+  const angle = Game.camera.angle;
+  const dist = Game.camera.distance;
+  const height = Game.camera.height;
+  const px = Game.player.x, pz = Game.player.z;
+  const camX = px + Math.sin(angle) * dist;
+  const camZ = pz + Math.cos(angle) * dist;
+  Game.camera3.position.set(camX, height, camZ);
+  Game.camera3.lookAt(px, 1.0, pz);
+}
+
+// =========================================================================
+// TOOLBAR / SHOP UI (bottom bar)
+// =========================================================================
+function refreshToolbarForMap() {
+  const toolbar = document.getElementById('toolbar');
+  const shopRow = document.getElementById('shop-row');
+  toolbar.innerHTML = '';
+  shopRow.innerHTML = '';
+
+  if (Game.currentMap === 'farm') {
+    const tools = [
+      { id: 'hoe', icon: '⛏️', label: 'ไถดิน' },
+      { id: 'plant', icon: '🌱', label: 'ปลูก' },
+      { id: 'water', icon: '💧', label: 'รดน้ำ' },
+      { id: 'harvest', icon: '✂️', label: 'เก็บเกี่ยว' },
+      { id: 'feed', icon: '🍖', label: 'ให้อาหารสัตว์' }
+    ];
+    tools.forEach(t => {
+      const btn = document.createElement('button');
+      btn.className = 'btn' + (Game.selectedTool === t.id ? ' active' : '');
+      btn.innerHTML = '<span>' + t.icon + '</span>' + t.label;
+      btn.onclick = () => {
+        Game.selectedTool = t.id;
+        refreshToolbarForMap();
+        showMessage('เลือกเครื่องมือ: ' + t.label + ' — กด E หรือคลิกหน้าจอเพื่อใช้งานตรงที่ยืนอยู่');
+      };
+      toolbar.appendChild(btn);
+    });
+
+    Object.entries(CROPS).forEach(([key, crop]) => {
+      const inSeason = crop.seasons.includes(Game.season);
+      const btn = document.createElement('button');
+      btn.className = 'btn' + (Game.selectedSeed === key ? ' active' : '');
+      btn.disabled = !inSeason;
+      btn.textContent = crop.name + ' (' + crop.cost + '🪙)' + (inSeason ? '' : ' [ไม่ใช่ฤดู]');
+      btn.onclick = () => {
+        Game.selectedSeed = key;
+        refreshToolbarForMap();
+        showMessage('เลือกเมล็ด: ' + crop.name);
+      };
+      shopRow.appendChild(btn);
+    });
+  } else if (Game.currentMap === 'forest') {
+    const tools = [
+      { id: 'forage', icon: '🍄', label: 'เก็บของป่า' },
+      { id: 'attack', icon: '⚔️', label: 'ล่าสัตว์' }
+    ];
+    tools.forEach(t => {
+      const btn = document.createElement('button');
+      btn.className = 'btn' + (Game.selectedTool === t.id ? ' active' : '');
+      btn.innerHTML = '<span>' + t.icon + '</span>' + t.label;
+      btn.onclick = () => {
+        Game.selectedTool = t.id;
+        refreshToolbarForMap();
+        showMessage(t.id === 'attack' ? 'เลือกล่าสัตว์ — เข้าใกล้สัตว์ป่าแล้วกด E หรือคลิกเพื่อโจมตี' : 'เลือกเก็บของป่า — เดินไปที่จุดของป่าแล้วกด E หรือคลิก');
+      };
+      toolbar.appendChild(btn);
+    });
+    const hintBtn = document.createElement('button');
+    hintBtn.className = 'btn';
+    hintBtn.disabled = true;
+    hintBtn.textContent = 'ระวัง! หมูป่าและหมาป่าโจมตีคุณได้ถ้าเข้าใกล้';
+    shopRow.appendChild(hintBtn);
+  } else {
+    const hintBtn = document.createElement('button');
+    hintBtn.className = 'btn';
+    const hints = {
+      town: 'กด E หรือคลิกใกล้ร้านค้า แม่น้ำ หรือชาวเมืองเพื่อโต้ตอบ',
+      house: 'กด E หรือคลิกหน้าจอใกล้เตียงเพื่อนอนพัก',
+      cave: 'กด E หรือคลิกใกล้ก้อนแร่เรืองแสงเพื่อขุด'
+    };
+    hintBtn.textContent = hints[Game.currentMap] || '';
+    hintBtn.disabled = true;
+    toolbar.appendChild(hintBtn);
+  }
+}
+
+// =========================================================================
+// INVENTORY MODAL
+// =========================================================================
+const ITEM_DISPLAY = Object.assign({}, CROPS, FOREST_ITEMS, ANIMAL_PRODUCTS, WILDLIFE_DROPS, ORE_TYPES, FISH_TYPES);
+const ITEM_ICONS = {
+  carrot: '🥕', wheat: '🌾', tomato: '🍅', pumpkin: '🎃', cabbage: '🥬',
+  mushroom: '🍄', berry: '🫐', log: '🪵', truffle: '🟤',
+  egg: '🥚', milk: '🥛', wool: '🧶',
+  rabbit_meat: '🍗', boar_meat: '🥩', wolf_pelt: '🪖',
+  copper: '🟠', iron: '⚙️', gold: '🟡', gem: '💎',
+  smallfish: '🐟', carp: '🐠', goldfish: '🐡'
+};
+
+function renderInventory() {
+  const grid = document.getElementById('inventory-grid');
+  grid.innerHTML = '';
+  const keys = Object.keys(Game.inventory).filter(k => Game.inventory[k] > 0);
+  if (keys.length === 0) {
+    grid.innerHTML = '<p class="inv-empty" style="grid-column: 1 / -1; text-align:center; font-size:14px;">กระเป๋ายังว่างอยู่ ลองไปเก็บผักหรือของป่าดูสิ</p>';
+    return;
+  }
+  keys.forEach(key => {
+    const info = ITEM_DISPLAY[key];
+    const qty = Game.inventory[key];
+    const slot = document.createElement('div');
+    slot.className = 'inv-slot';
+    slot.innerHTML = (ITEM_ICONS[key] || '📦') + '<span class="label">' + (info ? info.name : key) + '</span><span class="qty">x' + qty + '</span>';
+    grid.appendChild(slot);
+  });
+}
+
+document.getElementById('inventory-btn').onclick = () => {
+  if (Game.minigame) { showMessage('ปิดมินิเกมก่อนถึงจะเปิดกระเป๋าได้'); return; }
+  if (Game.dialogueOpen) { closeDialogue(); }
+  renderInventory();
+  document.getElementById('inventory-modal').classList.add('open');
+};
+
+document.querySelectorAll('[data-close]').forEach(btn => {
+  btn.onclick = () => {
+    document.getElementById(btn.dataset.close).classList.remove('open');
+  };
+});
+
+// =========================================================================
+// SLEEP / DAY CYCLE
+// =========================================================================
+document.getElementById('sleep-confirm-no').onclick = () => {
+  document.getElementById('sleep-modal').classList.remove('open');
+};
+document.getElementById('sleep-confirm-yes').onclick = () => {
+  document.getElementById('sleep-modal').classList.remove('open');
+  doSleep();
+};
+
+function doSleep() {
+  const overlay = document.getElementById('fade-overlay');
+  overlay.classList.add('show');
+  setTimeout(() => {
+    advanceDay();
+    switchMap('farm', getOrBuildMap('farm').spawn);
+    setTimeout(() => overlay.classList.remove('show'), 100);
+  }, 650);
+}
+
+function advanceDay() {
+  Game.day += 1;
+  Game.energy = 100;
+  Game.health = 100;
+
+  if (Game.day % 7 === 1 && Game.day > 1) {
+    Game.season = (Game.season + 1) % SEASONS.length;
+    const season = SEASONS[Game.season];
+    showMessage('ฤดูกาลเปลี่ยนเป็น' + season.name + 'แล้ว');
+    // refresh ground colors/sky on built scenes to reflect new season
+    Object.entries(Game.scenes).forEach(([name, data]) => {
+      if (name === 'house' || name === 'cave') return;
+      if (data.scene.fog) data.scene.fog.color.setHex(season.sky);
+      data.scene.background = new THREE.Color(season.sky);
+    });
+    const farmData = Game.scenes['farm'];
+    if (farmData) {
+      // update farm ground texture directly
+      const newGrass = getGrassTexture(Game.season);
+      farmData.scene.traverse(obj => {
+        if (obj.isMesh && obj.geometry && obj.geometry.type === 'PlaneGeometry' && obj.rotation.x !== 0) {
+          obj.material.map = newGrass;
+          obj.material.needsUpdate = true;
+        }
+      });
+    }
+  }
+
+  // crop growth on farm
+  const farmData = Game.scenes['farm'];
+  if (farmData) {
+    farmData.tiles.forEach(tile => {
+      if (tile.seed) {
+        if (tile.watered) {
+          tile.growth += 1;
+        }
+        tile.watered = false;
+        if (tile.soilMesh) { tile.soilMesh.material.map = getSoilTexture(false); tile.soilMesh.material.needsUpdate = true; }
+        const crop = CROPS[tile.seed];
+        if (!crop.seasons.includes(Game.season) && tile.growth < crop.growTime) {
+          tile.seed = null;
+          tile.growth = 0;
+        }
+        refreshCropMesh(tile, farmData.scene);
+      }
+    });
+    // animal products ready if fed
+    farmData.pets.forEach(animal => {
+      if (animal.fed) {
+        animal.readyProduct = true;
+        setAnimalProductMarker(farmData, animal, true);
+      }
+      animal.fed = false;
+    });
+  }
+
+  updateHUD();
+}
+
+// =========================================================================
+// MAIN LOOP
+// =========================================================================
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = Math.min(Game.clock.getDelta(), 0.1);
+  let mapData = null;
+  if (Game.currentMap !== '__loading__') {
+    const inputLocked = !!Game.minigame;
+    if (!inputLocked) {
+      updatePlayerMovement(delta);
+    }
+    updateCamera();
+    updateMinigame(delta);
+    mapData = getCurrentMapData();
+    if (!inputLocked && mapData && mapData.wildlife) {
+      updateWildlife(mapData, delta);
+    }
+    if (Game.dialogueOpen) {
+      updateDialogueProximity(mapData);
+    }
+  }
+  Game.renderer.render(getCurrentMapData().scene, Game.camera3);
+  updateWorldLabels(mapData);
+}
+
+function updateWorldLabels(mapData) {
+  const container = document.getElementById('world-labels');
+  if (!container) return;
+  container.innerHTML = '';
+  if (!mapData || !mapData.wildlife) return;
+  mapData.wildlife.forEach(animal => {
+    if (!animal.alive || animal.hp >= animal.maxHp) return;
+    const vec = new THREE.Vector3(animal.x, 1.0, animal.z);
+    vec.project(Game.camera3);
+    if (vec.z > 1) return; // behind camera
+    const sx = (vec.x * 0.5 + 0.5) * window.innerWidth;
+    const sy = (1 - (vec.y * 0.5 + 0.5)) * window.innerHeight;
+    const label = document.createElement('div');
+    label.className = 'world-label';
+    label.style.left = sx + 'px';
+    label.style.top = sy + 'px';
+    const info = WILDLIFE_TYPES[animal.type];
+    label.textContent = info.name + ' ' + Math.max(0, Math.round(animal.hp)) + '/' + animal.maxHp;
+    container.appendChild(label);
+  });
+}
+
+// =========================================================================
+// INIT
+// =========================================================================
+function init() {
+  initRenderer();
+  Game.clock = new THREE.Clock();
+  Game.player.mesh = createPlayerMesh();
+
+  const farmData = getOrBuildMap('farm');
+  Game.currentMap = 'farm';
+  farmData.scene.add(Game.player.mesh);
+  Game.player.x = farmData.spawn.x;
+  Game.player.z = farmData.spawn.z;
+  Game.player.mesh.position.set(farmData.spawn.x, 0, farmData.spawn.z);
+
+  // start with one chicken so feeding/animal systems are discoverable
+  addAnimalToFarm(farmData, 'chicken');
+
+  setupInput();
+  refreshToolbarForMap();
+  updateHUD();
+  showMessage('เดินด้วย WASD หรือลูกศร ลากเมาส์/นิ้วเพื่อหมุนกล้อง กด E หรือคลิกเพื่อใช้เครื่องมือ');
+
+  animate();
+}
+
+window.addEventListener('load', init);
+
+</script>
+</body>
+</html>
